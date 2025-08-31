@@ -75,19 +75,76 @@ After keyword `static` if any, each method declaration has the form:
 <return type> <identifier>(<list of parameters>) <block statement>
 ```
 
-The `<return type>` is a type which is described in Section 4. The `<identifier>` is the name of the method. The `<list of parameters>` is a nullable semicolon-separated list of parameter declaration. Each parameter declaration has the form:
+The `<return type>` is a type which is described in Section 4. The `<identifier>` is the name of the method. The return type can be a reference type using the `&` operator:
+
+```oplang
+<type> & <identifier>(<list of parameters>) <block statement>
+```
+
+Reference return types allow methods to return aliases to objects, enabling method chaining and efficient access to object members. The `<list of parameters>` is a nullable semicolon-separated list of parameter declaration. Each parameter declaration has the form:
 
 ```oplang
 <type> <identifier-list>
 ```
 
+or for reference parameters:
+
+```oplang
+<type> & <identifier-list>
+```
+
+Reference parameters allow methods to modify the original values passed to them, enabling pass-by-reference semantics.
+
 The `<block statement>` will be described in [Block Statements](#block-statements).
 
-In a class, the name of a method is unique that means there are not two methods with the same name allowed in a class. A special instance method is constructor method whose name is the same as class name and it has no return type so no return statement is in the body. Its declaration has the form:
+In a class, the name of a method is unique that means there are not two methods with the same name allowed in a class.
+
+### Constructor declaration
+
+A constructor is a special method that is used to initialize objects of a class. There are three types of constructors:
+
+#### Default Constructor
+A default constructor has no parameters and is used to create objects with default values:
+
+```oplang
+<identifier>() <block statement>
+```
+
+#### Copy Constructor  
+A copy constructor takes an object of the same class as a parameter and creates a new object by copying the values:
+
+```oplang
+<identifier>(<identifier> other) <block statement>
+```
+
+#### User-defined Constructor
+A user-defined constructor takes custom parameters to initialize the object:
 
 ```oplang
 <identifier>(<list of parameters>) <block statement>
 ```
+
+All constructors:
+- Have the same name as the class
+- Have no return type
+- Cannot contain return statements in the body
+- Are automatically called when creating objects with `new`
+
+### Destructor declaration
+
+A destructor is a special method that is called when an object is destroyed. It is used for cleanup operations:
+
+```oplang
+~<identifier>() <block statement>
+```
+
+The destructor:
+- Has the same name as the class preceded by `~`
+- Takes no parameters
+- Has no return type
+- Cannot contain return statements in the body
+- Is automatically called when the object goes out of scope or is garbage collected
+- Is used primarily for cleanup operations, not memory deallocation (since OPLang uses garbage collection)
 
 ---
 
@@ -156,6 +213,10 @@ The following is a list of **valid** operators along with their meaning:
 ### Separator
 
 The following characters are the **separators**: left square bracket (`[`), right square bracket (`]`), left parenthesis (`{`), right parenthesis (`}`), left bracket (`(`), right bracket (`)`), semicolon (`;`), colon (`:`), dot (`.`) and comma (`,`).
+
+### Special Characters
+
+The following characters have special meanings: tilde (`~`) for destructor declaration, ampersand (`&`) for reference declaration.
 
 ### Literal
 
@@ -267,6 +328,32 @@ Note that
 
 A class declaration defines a class type which is used as a new type in the program. `nil` is the value of an uninitialized variable in class type. An object of type `X` is created by expression `new X()`.
 
+### Reference Type
+
+A reference type is an alias for another variable or object. A reference must be initialized when declared and cannot be reassigned to refer to a different object. A reference type is declared using the `&` operator:
+
+```oplang
+<type> & <identifier> := <expression>;
+```
+
+Reference types:
+- Must be initialized at declaration
+- Cannot be reassigned after initialization
+- Have the same lifetime as the referenced object
+- Are aliases, not separate objects
+- Cannot be `nil` (must always refer to a valid object)
+
+Examples:
+```oplang
+int x := 10;
+int & ref := x;        // ref is an alias for x
+ref := 20;             // x also becomes 20
+
+Rectangle r := new Rectangle(5.0, 3.0);
+Rectangle & rectRef := r;  // rectRef is an alias for r
+rectRef.length := 10.0;    // r.length also becomes 10.0
+```
+
 ## Expression
 
 **Expressions** are constructs which are made up of operators and operands. They calculate on their operands and return new data. In OPLang, there exist two types of operations, unary and binary. Unary operations work with one operand and binary operations work with two operands. There are some groups of operators: arithmetic, boolean, relational, string, index, method invocation and object creation.
@@ -359,12 +446,27 @@ where the first `<identifier>` is a class name and `<identifier>` is a static me
 
 ### Object Creation
 
-An object of a class type is only created by expression:  
+An object of a class type is created by expression:  
 ```oplang
 new <identifier>(<list of expressions>)
 ```  
 
-The `<identifier>` must be in a class type. The `<list of expressions>` is the comma-separated list of arguments. The list may be empty when the constructor of the class has no parameter.
+The `<identifier>` must be in a class type. The `<list of expressions>` is the comma-separated list of arguments. The list may be empty when using the default constructor.
+
+Objects can be created using different constructors:
+
+```oplang
+// Default constructor (no arguments)
+obj := new ClassName();
+
+// Copy constructor (one argument of same class type)
+obj2 := new ClassName(obj);
+
+// User-defined constructor (custom arguments)
+obj3 := new ClassName(param1, param2);
+```
+
+The compiler will automatically select the appropriate constructor based on the number and types of arguments provided.
 
 ### This
 
@@ -440,19 +542,27 @@ For example:
 
 ### Assignment statement
 
-An **assignment statement** assigns a value to a local variable, a mutable attribute or an element of an array. An assignment takes the following form:  
+An **assignment statement** assigns a value to a local variable, a mutable attribute, an element of an array, or a reference. An assignment takes the following form:  
 ```oplang
 <lhs> := <expression>;
 ```
 
-where the value returned by the `<expression>` is stored in the `<lhs>`, which can be a local variable, a mutable attribute or an element of an array.  
+where the value returned by the `<expression>` is stored in the `<lhs>`, which can be a local variable, a mutable attribute, an element of an array, or a reference.  
 The type of the value returned by the expression must be compatible with the type of lhs.  
+
+**Reference Assignment**: When assigning to a reference, the value is assigned to the referenced object, not the reference itself:
+```oplang
+int x := 10;
+int & ref := x;
+ref := 20;  // x becomes 20, ref still refers to x
+```
 
 The following code fragment contains examples of assignment:
 ```oplang
 this.aPI := 3.14;
 value := x.foo(5);
 l[3] := value * 2;
+ref := newValue;  // Assignment to reference
 ```
 
 ### If statement
@@ -611,6 +721,145 @@ class Example2 {
         io.writeFloatLn(s.getArea());
         s := new Triangle(3,4);
         io.writeFloatLn(s.getArea());
+    }
+}
+```
+
+### Example 3 - Constructor and Destructor
+```oplang
+class Rectangle {
+    float length, width;
+    static int count;
+    
+    // Default constructor
+    Rectangle() {
+        this.length := 1.0;
+        this.width := 1.0;
+        Rectangle.count := Rectangle.count + 1;
+    }
+    
+    // Copy constructor
+    Rectangle(Rectangle other) {
+        this.length := other.length;
+        this.width := other.width;
+        Rectangle.count := Rectangle.count + 1;
+    }
+    
+    // User-defined constructor
+    Rectangle(float length, float width) {
+        this.length := length;
+        this.width := width;
+        Rectangle.count := Rectangle.count + 1;
+    }
+    
+    // Destructor
+    ~Rectangle() {
+        Rectangle.count := Rectangle.count - 1;
+        io.writeStrLn("Rectangle destroyed");
+    }
+    
+    float getArea() {
+        return this.length * this.width;
+    }
+    
+    static int getCount() {
+        return Rectangle.count;
+    }
+}
+
+class Example3 {
+    void main() {
+        // Using different constructors
+        Rectangle r1 := new Rectangle();           // Default constructor
+        Rectangle r2 := new Rectangle(5.0, 3.0);  // User-defined constructor
+        Rectangle r3 := new Rectangle(r2);        // Copy constructor
+        
+        io.writeFloatLn(r1.getArea());  // 1.0
+        io.writeFloatLn(r2.getArea());  // 15.0
+        io.writeFloatLn(r3.getArea());  // 15.0
+        io.writeIntLn(Rectangle.getCount());  // 3
+        
+        // Destructors will be called automatically when objects go out of scope
+    }
+}
+```
+
+### Example 4 - Reference Variables
+```oplang
+class MathUtils {
+    static void swap(int & a, int & b) {
+        int temp := a;
+        a := b;
+        b := temp;
+    }
+    
+    static void modifyArray(int[5] & arr, int index, int value) {
+        arr[index] := value;
+    }
+    
+    static int & findMax(int[5] & arr) {
+        int & max := arr[0];
+        for i := 1 to 4 do {
+            if (arr[i] > max) then {
+                max := arr[i];
+            }
+        }
+        return max;
+    }
+}
+
+class StringBuilder {
+    string & content;
+    
+    StringBuilder(string & content) {
+        this.content := content;
+    }
+    
+    StringBuilder & append(string & text) {
+        this.content := this.content ^ text;
+        return this;
+    }
+    
+    StringBuilder & appendLine(string & text) {
+        this.content := this.content ^ text ^ "\n";
+        return this;
+    }
+    
+    string & toString() {
+        return this.content;
+    }
+}
+
+class Example4 {
+    void main() {
+        // Reference variables
+        int x := 10, y := 20;
+        int & xRef := x;
+        int & yRef := y;
+        
+        io.writeIntLn(xRef);  // 10
+        io.writeIntLn(yRef);  // 20
+        
+        // Pass by reference
+        MathUtils.swap(x, y);
+        io.writeIntLn(x);  // 20
+        io.writeIntLn(y);  // 10
+        
+        // Array references
+        int[5] numbers := {1, 2, 3, 4, 5};
+        MathUtils.modifyArray(numbers, 2, 99);
+        io.writeIntLn(numbers[2]);  // 99
+        
+        // Reference return
+        int & maxRef := MathUtils.findMax(numbers);
+        maxRef := 100;
+        io.writeIntLn(numbers[2]);  // 100
+        
+        // Method chaining with references
+        string text := "Hello";
+        StringBuilder & builder := new StringBuilder(text);
+        builder.append(" ").append("World").appendLine("!");
+        io.writeStrLn(builder.toString());  // "Hello World!\n"
     }
 }
 ```
