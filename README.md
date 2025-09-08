@@ -13,6 +13,7 @@ This is a mini project for the **Principle of Programming Languages course (CO30
 📋 **For detailed language specification, see [OPLang Specification](OPLang_specification.md)**
 
 The project demonstrates fundamental concepts of compiler construction including:
+
 - **Lexical Analysis**: Tokenization and error handling for invalid characters, unclosed strings, and illegal escape sequences
 - **Syntax Analysis**: Grammar-based parsing using ANTLR4 (ANother Tool for Language Recognition)
 - **Error Handling**: Comprehensive error reporting for both lexical and syntactic errors
@@ -23,11 +24,13 @@ The project demonstrates fundamental concepts of compiler construction including
 ### Required Tasks to Complete
 
 1. **Read the language specification carefully**
+
    - Study the detailed [OPLang Specification](OPLang_specification.md) document
    - Understand the syntax and semantics of the OPLang language
    - Master the lexical and syntax rules
 
 2. **Implement the OPLang.g4 file**
+
    - Complete the ANTLR4 grammar file in `src/grammar/OPLang.g4`
    - Define lexical rules (tokens)
    - Define parser rules (grammar rules)
@@ -61,6 +64,47 @@ For lexical errors, the lexer must return the following tokens with specific lex
 
 ---
 
+## Assignment 2 - AST Generation
+
+### Required Tasks to Complete
+
+1. **Study the AST Node Structure**
+
+   - Read carefully all node classes in `src/utils/nodes.py`
+   - Understand the AST node hierarchy and their properties
+   - Master how different language constructs map to AST nodes
+
+2. **Implement the ASTGeneration Class**
+
+   - Create a class `ASTGeneration` in `src/astgen/ast_generation.py`
+   - Inherit from `OPLangVisitor` (generated from ANTLR4)
+   - Override visitor methods to construct appropriate AST nodes
+   - Handle all language constructs defined in the OPLang specification
+
+3. **Write 100 AST Generation Test Cases**
+   - Implement **100 test cases** in `tests/test_ast_gen.py`
+   - Test AST generation for all language features
+   - Verify correct node types and structure
+   - Test edge cases and complex nested structures
+
+### AST Generation Requirements
+
+The `ASTGeneration` class must:
+
+- **Inherit from OPLangVisitor**: Use the visitor pattern to traverse parse trees
+- **Return AST nodes**: Each visit method should return appropriate node objects from `nodes.py`
+- **Handle all constructs**: Support all language features defined in the grammar
+- **Maintain structure**: Preserve the logical structure and relationships between language elements
+
+### Evaluation Criteria
+
+- **AST Implementation**: Correctness and completeness of the `ASTGeneration` class
+- **Node Usage**: Proper utilization of node classes from `nodes.py`
+- **Test Coverage**: Quality and comprehensiveness of 100 AST generation test cases
+- **Structure Accuracy**: AST must correctly represent the source program structure
+
+---
+
 ## Project Structure
 
 ```
@@ -74,7 +118,7 @@ For lexical errors, the lexer must return the following tokens with specific lex
 │   └── src/
 │       └── grammar/      # Compiled ANTLR4 output
 │           ├── OPLangLexer.py      # Generated lexer
-│           ├── OPLangParser.py     # Generated parser  
+│           ├── OPLangParser.py     # Generated parser
 │           ├── OPLangVisitor.py    # Generated visitor
 │           └── *.tokens           # Token definitions
 ├── external/             # External dependencies
@@ -108,7 +152,7 @@ For lexical errors, the lexer must return the following tokens with specific lex
 │   │   ├── static_checker.py # StaticChecker class implementation
 │   │   └── static_error.py   # Semantic error definitions
 │   ├── utils/            # Utility modules
-│   │   ├── __init__.py   # Package initialization  
+│   │   ├── __init__.py   # Package initialization
 │   │   ├── nodes.py      # AST node class definitions
 │   │   └── visitor.py    # Base visitor classes
 │   └── grammar/          # Grammar definitions
@@ -123,7 +167,6 @@ For lexical errors, the lexer must return the following tokens with specific lex
     └── utils.py          # Testing utilities and helper classes
 ```
 
-
 ## Setup and Usage
 
 ### Prerequisites
@@ -133,19 +176,22 @@ For lexical errors, the lexer must return the following tokens with specific lex
 - **Git** (for cloning the repository)
 
 The project includes a comprehensive Makefile that supports:
+
 - ✅ **Windows** (PowerShell/CMD)
-- ✅ **macOS** (Terminal/Zsh/Bash)  
+- ✅ **macOS** (Terminal/Zsh/Bash)
 - ✅ **Linux** (Bash/Zsh)
 
 ### Quick Start
 
 1. **Clone the repository:**
+
    ```bash
    git clone <repository-url>
    cd project
    ```
 
 2. **Check system requirements:**
+
    ```bash
    make check
    # OR using the entrypoint script:
@@ -156,6 +202,7 @@ The project includes a comprehensive Makefile that supports:
    ```
 
 3. **Set up the environment and install dependencies:**
+
    ```bash
    make setup
    # OR using the entrypoint script:
@@ -164,21 +211,25 @@ The project includes a comprehensive Makefile that supports:
    # macOS/Linux:
    python3 run.py setup
    ```
+
    This command:
+
    - Creates a Python virtual environment
    - Installs required Python packages
    - Downloads ANTLR4 JAR file automatically
 
 4. **Activate the virtual environment (REQUIRED before building and testing):**
+
    ```bash
    # On macOS/Linux:
    source venv/bin/activate
-   
+
    # On Windows:
    venv\Scripts\activate
    ```
 
 5. **Build the compiler:**
+
    ```bash
    make build
    # OR using the entrypoint script:
@@ -207,11 +258,13 @@ The project includes a comprehensive Makefile that supports:
 ### Available Commands
 
 **Using Makefile (recommended):**
+
 ```bash
 make help  # Get a full list of available commands
 ```
 
 **Using run.py entrypoint:**
+
 ```bash
 # Windows:
 python run.py help         # Get help for run.py commands
@@ -233,20 +286,23 @@ python3 run.py clean       # Clean build files
 ```
 
 > **⚠️ Important**: Always activate the virtual environment before running build and test commands:
+>
 > ```bash
 > # On macOS/Linux:
 > source venv/bin/activate
-> 
+>
 > # On Windows:
 > venv\Scripts\activate
 > ```
 
 #### Setup & Build Commands
-- `make setup` or `python run.py setup` (Windows) / `python3 run.py setup` (macOS/Linux) - Install dependencies and set up environment  
+
+- `make setup` or `python run.py setup` (Windows) / `python3 run.py setup` (macOS/Linux) - Install dependencies and set up environment
 - `make build` or `python run.py build` (Windows) / `python3 run.py build` (macOS/Linux) - Compile ANTLR grammar files to Python code
 - `make check` or `python run.py check` (Windows) / `python3 run.py check` (macOS/Linux) - Verify required tools are installed
 
-#### Testing Commands  
+#### Testing Commands
+
 - `make test-lexer` or `python run.py test-lexer` (Windows) / `python3 run.py test-lexer` (macOS/Linux) - Run lexer tests with HTML report generation
 - `make test-parser` or `python run.py test-parser` (Windows) / `python3 run.py test-parser` (macOS/Linux) - Run parser tests with HTML report generation
 - `make test-ast` or `python run.py test-ast` (Windows) / `python3 run.py test-ast` (macOS/Linux) - Run AST generation tests with HTML report generation
@@ -254,8 +310,9 @@ python3 run.py clean       # Clean build files
 - `make test-codegen` or `python run.py test-codegen` (Windows) / `python3 run.py test-codegen` (macOS/Linux) - Run code generation tests with HTML report generation
 
 #### Maintenance Commands
+
 - `make clean` or `python run.py clean` (Windows) / `python3 run.py clean` (macOS/Linux) - Remove build directories
-- `make clean-cache` or `python run.py clean-cache` (Windows) / `python3 run.py clean-cache` (macOS/Linux) - Clean Python cache files (__pycache__, .pyc)
+- `make clean-cache` or `python run.py clean-cache` (Windows) / `python3 run.py clean-cache` (macOS/Linux) - Clean Python cache files (**pycache**, .pyc)
 - `make clean-reports` or `python run.py clean-reports` (Windows) / `python3 run.py clean-reports` (macOS/Linux) - Remove generated test reports
 - `make clean-venv` or `python run.py clean-venv` (Windows) / `python3 run.py clean-venv` (macOS/Linux) - Remove virtual environment
 
@@ -264,12 +321,14 @@ python3 run.py clean       # Clean build files
 The project includes a comprehensive testing framework with:
 
 ### Test Structure
+
 - **Unit Tests**: Individual component testing using pytest
 - **Integration Tests**: End-to-end compilation testing
 - **HTML Reports**: Detailed test results with coverage information
 - **Automated CI**: Ready for continuous integration setup
 
 ### Test Files
+
 - `tests/test_lexer.py` - Lexical analysis tests
 - `tests/test_parser.py` - Syntax analysis tests
 - `tests/test_ast_gen.py` - AST generation tests
@@ -278,6 +337,7 @@ The project includes a comprehensive testing framework with:
 - `tests/utils.py` - Testing utilities and helper classes
 
 ### Running Tests
+
 ```bash
 # Activate virtual environment first (REQUIRED)
 source venv/bin/activate  # macOS/Linux
@@ -291,9 +351,9 @@ python run.py test-lexer
 # macOS/Linux:
 python3 run.py test-lexer
 
-# Run parser tests  
+# Run parser tests
 make test-parser
-# OR  
+# OR
 # Windows:
 python run.py test-parser
 # macOS/Linux:
@@ -347,6 +407,7 @@ xdg-open reports/codegen/index.html
 ```
 
 ### Test Report Features
+
 - ✅ **Pass/Fail Status** for each test case
 - ✅ **Execution Time** measurements
 - ✅ **Error Messages** with stack traces
@@ -360,10 +421,10 @@ xdg-open reports/codegen/index.html
 The OPLang compiler follows a traditional compiler architecture:
 
 ```
-Source Code (.OPLang) 
+Source Code (.OPLang)
     ↓
 Lexical Analysis (OPLangLexer)
-    ↓  
+    ↓
 Token Stream
     ↓
 Syntax Analysis (OPLangParser)
@@ -390,20 +451,22 @@ JVM Bytecode (.class)
 To add new language features:
 
 1. **Modify the grammar** in `src/grammar/OPLang.g4`:
+
    ```antlr
    // Add new rule
    assignment: ID '=' exp ';' ;
-   
+
    // Add new token
    ASSIGN: '=' ;
    ```
 
 2. **Rebuild the parser**:
+
    ```bash
    # Activate virtual environment first
    source venv/bin/activate  # macOS/Linux
    # venv\Scripts\activate   # Windows
-   
+
    make build
    # OR
    # Windows:
@@ -413,6 +476,7 @@ To add new language features:
    ```
 
 3. **Add test cases** in `tests/`:
+
    ```python
    def test_assignment():
        source = "x = 42;"
@@ -421,11 +485,12 @@ To add new language features:
    ```
 
 4. **Run tests** to verify:
+
    ```bash
    # Activate virtual environment first
    source venv/bin/activate  # macOS/Linux
    # venv\Scripts\activate   # Windows
-   
+
    make test-parser
    # OR
    # Windows:
@@ -437,6 +502,7 @@ To add new language features:
 ### Adding New Test Cases
 
 #### Lexer Tests (`tests/test_lexer.py`)
+
 ```python
 def test_new_feature():
     source = "your_test_input"
@@ -444,7 +510,8 @@ def test_new_feature():
     assert Tokenizer(source).get_tokens_as_string() == expected
 ```
 
-#### Parser Tests (`tests/test_parser.py`)  
+#### Parser Tests (`tests/test_parser.py`)
+
 ```python
 def test_new_syntax():
     source = """your test program"""
@@ -453,6 +520,7 @@ def test_new_syntax():
 ```
 
 ### File Naming Convention
+
 - Test functions must start with `test_`
 - Use descriptive names: `test_variable_declaration()`, `test_function_call()`
 - Number tests sequentially: `test_001()`, `test_002()`, etc.
@@ -460,16 +528,19 @@ def test_new_syntax():
 ## Dependencies
 
 ### Core Dependencies
+
 - **antlr4-python3-runtime==4.13.2** - ANTLR4 Python runtime for generated parsers
 - **pytest** - Testing framework for unit and integration tests
 - **pytest-html** - HTML report generation for test results
 - **pytest-timeout** - Test timeout handling for long-running tests
 
 ### External Tools
+
 - **ANTLR 4.13.2** - Parser generator tool (auto-downloaded)
 - **Java Runtime Environment** - Required to run ANTLR4 tool
 
 ### Virtual Environment
+
 The project automatically creates and manages a Python virtual environment to isolate dependencies.
 
 ## Troubleshooting
@@ -477,6 +548,7 @@ The project automatically creates and manages a Python virtual environment to is
 ### Common Issues
 
 #### "Java not found" error
+
 ```bash
 # Install Java (macOS with Homebrew)
 brew install openjdk
@@ -488,12 +560,13 @@ sudo apt update && sudo apt install openjdk-11-jre
 # Download from: https://www.oracle.com/java/technologies/downloads/
 ```
 
-#### "Python 3.12 not found" error  
+#### "Python 3.12 not found" error
+
 ```bash
 # macOS with Homebrew
 brew install python@3.12
 
-# Ubuntu/Debian  
+# Ubuntu/Debian
 sudo apt install python3.12
 
 # Windows
@@ -501,6 +574,7 @@ sudo apt install python3.12
 ```
 
 #### ANTLR download failures
+
 ```bash
 # Manual download if auto-download fails
 mkdir -p external
@@ -511,6 +585,7 @@ make build
 ```
 
 #### Virtual environment issues
+
 ```bash
 # Clean and recreate virtual environment
 make clean-venv
@@ -522,6 +597,7 @@ source venv/bin/activate  # macOS/Linux
 ```
 
 #### Permission errors (Linux/macOS)
+
 ```bash
 # Ensure you have write permissions
 chmod +x Makefile
@@ -530,7 +606,7 @@ chmod +x Makefile
 ### Getting Help
 
 1. **Check Prerequisites**: Run `make check` to verify system setup
-2. **View Logs**: Check terminal output for detailed error messages  
+2. **View Logs**: Check terminal output for detailed error messages
 3. **Clean Build**: Try `make clean && make setup && make build`
 4. **Check Java**: Ensure Java is properly installed and in PATH
 5. **Virtual Environment**: Always activate the virtual environment before running build/test commands:
@@ -538,7 +614,6 @@ chmod +x Makefile
    source venv/bin/activate  # macOS/Linux
    venv\Scripts\activate   # Windows
    ```
-
 
 ## License
 
@@ -555,4 +630,3 @@ This project is developed for educational purposes as part of the **Principle of
 **Course**: CO3005 - Principle of Programming Languages  
 **Institution**: Ho Chi Minh City University of Technology (VNU-HCM)  
 **Department**: Computer Science, Faculty of Computer Science and Engineering
-

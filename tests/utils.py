@@ -11,7 +11,7 @@ from antlr4 import *
 from build.OPLangLexer import OPLangLexer
 from build.OPLangParser import OPLangParser
 from src.utils.error_listener import NewErrorListener
-
+from src.astgen.ast_generation import ASTGeneration
 
 
 class Tokenizer:
@@ -63,3 +63,27 @@ class Parser:
             return "success"
         except Exception as e:
             return str(e)
+
+
+class ASTGenerator:
+    """Class to generate AST from HLang source code."""
+
+    def __init__(self, input_string):
+        self.input_string = input_string
+        self.input_stream = InputStream(input_string)
+        self.lexer = OPLangLexer(self.input_stream)
+        self.token_stream = CommonTokenStream(self.lexer)
+        self.parser = OPLangParser(self.token_stream)
+        self.ast_generator = ASTGeneration()
+
+    def generate(self):
+        """Generate AST from the input string."""
+        try:
+            # Parse the program starting from the entry point
+            parse_tree = self.parser.program()
+
+            # Generate AST using the visitor
+            ast = self.ast_generator.visit(parse_tree)
+            return ast
+        except Exception as e:
+            return f"AST Generation Error: {str(e)}"
