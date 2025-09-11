@@ -98,8 +98,8 @@ def test_010():
     source = """class Test { 
         static void main() { 
             string result;
-            result := "Hello" ^ " " ^ "World";
             Test obj;
+            result := "Hello" ^ " " ^ "World";
             obj := new Test();
         }
     }"""
