@@ -41,8 +41,8 @@ A `<member>` may be static, preceded by the keyword `static`, or instance. A mem
 #### Example
 ```oplang
 class Shape {
-    static final int numOfShape = 0;
-    final int immuAttribute = 0;
+    static final int numOfShape := 0;
+    final int immuAttribute := 0;
 
     float length, width;
     static int getNumOfShape() {
@@ -63,8 +63,8 @@ After keywords `static` and `final` if any, an attribute declaration starts with
 
 For example:
 ```oplang
-final int My1stCons = 1 + 5, My2ndCons = 2;
-static int x, y = 0;
+final int My1stCons := 1 + 5, My2ndCons := 2;
+static int x, y := 0;
 ```
 
 ### Method declaration
@@ -92,6 +92,8 @@ or for reference parameters:
 ```oplang
 <type> & <identifier-list>
 ```
+
+where `<identifier-list>` is a comma-separated list of identifiers of the same type. This allows declaring multiple parameters of the same type in a single declaration.
 
 Reference parameters allow methods to modify the original values passed to them, enabling pass-by-reference semantics.
 
@@ -346,12 +348,12 @@ Reference types:
 Examples:
 ```oplang
 int x := 10;
-int & ref := x;        // ref is an alias for x
-ref := 20;             // x also becomes 20
+int & ref := x;        # ref is an alias for x
+ref := 20;             # x also becomes 20
 
 Rectangle r := new Rectangle(5.0, 3.0);
-Rectangle & rectRef := r;  // rectRef is an alias for r
-rectRef.length := 10.0;    // r.length also becomes 10.0
+Rectangle & rectRef := r;  # rectRef is an alias for r
+rectRef.length := 10.0;    # r.length also becomes 10.0
 ```
 
 ## Expression
@@ -456,13 +458,13 @@ The `<identifier>` must be in a class type. The `<list of expressions>` is the c
 Objects can be created using different constructors:
 
 ```oplang
-// Default constructor (no arguments)
+# Default constructor (no arguments)
 obj := new ClassName();
 
-// Copy constructor (one argument of same class type)
+# Copy constructor (one argument of same class type)
 obj2 := new ClassName(obj);
 
-// User-defined constructor (custom arguments)
+# User-defined constructor (custom arguments)
 obj3 := new ClassName(param1, param2);
 ```
 
@@ -554,7 +556,7 @@ The type of the value returned by the expression must be compatible with the typ
 ```oplang
 int x := 10;
 int & ref := x;
-ref := 20;  // x becomes 20, ref still refers to x
+ref := 20;  # x becomes 20, ref still refers to x
 ```
 
 The following code fragment contains examples of assignment:
@@ -562,7 +564,7 @@ The following code fragment contains examples of assignment:
 this.aPI := 3.14;
 value := x.foo(5);
 l[3] := value * 2;
-ref := newValue;  // Assignment to reference
+ref := newValue;  # Assignment to reference
 ```
 
 ### If statement
@@ -716,7 +718,7 @@ class Triangle extends Shape {
 
 class Example2 {
     void main(){
-        s:Shape;
+        Shape s; 
         s := new Rectangle(3,4);
         io.writeFloatLn(s.getArea());
         s := new Triangle(3,4);
@@ -731,28 +733,28 @@ class Rectangle {
     float length, width;
     static int count;
     
-    // Default constructor
+    # Default constructor
     Rectangle() {
         this.length := 1.0;
         this.width := 1.0;
         Rectangle.count := Rectangle.count + 1;
     }
     
-    // Copy constructor
+    # Copy constructor
     Rectangle(Rectangle other) {
         this.length := other.length;
         this.width := other.width;
         Rectangle.count := Rectangle.count + 1;
     }
     
-    // User-defined constructor
-    Rectangle(float length, float width) {
+    # User-defined constructor
+    Rectangle(float length; float width) {
         this.length := length;
         this.width := width;
         Rectangle.count := Rectangle.count + 1;
     }
     
-    // Destructor
+    # Destructor
     ~Rectangle() {
         Rectangle.count := Rectangle.count - 1;
         io.writeStrLn("Rectangle destroyed");
@@ -769,17 +771,17 @@ class Rectangle {
 
 class Example3 {
     void main() {
-        // Using different constructors
-        Rectangle r1 := new Rectangle();           // Default constructor
-        Rectangle r2 := new Rectangle(5.0, 3.0);  // User-defined constructor
-        Rectangle r3 := new Rectangle(r2);        // Copy constructor
+        # Using different constructors
+        Rectangle r1 := new Rectangle();           # Default constructor
+        Rectangle r2 := new Rectangle(5.0, 3.0);  # User-defined constructor
+        Rectangle r3 := new Rectangle(r2);        # Copy constructor
         
-        io.writeFloatLn(r1.getArea());  // 1.0
-        io.writeFloatLn(r2.getArea());  // 15.0
-        io.writeFloatLn(r3.getArea());  // 15.0
-        io.writeIntLn(Rectangle.getCount());  // 3
+        io.writeFloatLn(r1.getArea());  # 1.0
+        io.writeFloatLn(r2.getArea());  # 15.0
+        io.writeFloatLn(r3.getArea());  # 15.0
+        io.writeIntLn(Rectangle.getCount());  # 3
         
-        // Destructors will be called automatically when objects go out of scope
+        # Destructors will be called automatically when objects go out of scope
     }
 }
 ```
@@ -787,13 +789,13 @@ class Example3 {
 ### Example 4 - Reference Variables
 ```oplang
 class MathUtils {
-    static void swap(int & a, int & b) {
+    static void swap(int & a; int & b) {
         int temp := a;
         a := b;
         b := temp;
     }
     
-    static void modifyArray(int[5] & arr, int index, int value) {
+    static void modifyArray(int[5] & arr; int index; int value) {
         arr[index] := value;
     }
     
@@ -832,34 +834,34 @@ class StringBuilder {
 
 class Example4 {
     void main() {
-        // Reference variables
+        # Reference variables
         int x := 10, y := 20;
         int & xRef := x;
         int & yRef := y;
         
-        io.writeIntLn(xRef);  // 10
-        io.writeIntLn(yRef);  // 20
+        io.writeIntLn(xRef);  # 10
+        io.writeIntLn(yRef);  # 20
         
-        // Pass by reference
+        # Pass by reference
         MathUtils.swap(x, y);
-        io.writeIntLn(x);  // 20
-        io.writeIntLn(y);  // 10
+        io.writeIntLn(x);  # 20
+        io.writeIntLn(y);  # 10
         
-        // Array references
+        # Array references
         int[5] numbers := {1, 2, 3, 4, 5};
         MathUtils.modifyArray(numbers, 2, 99);
-        io.writeIntLn(numbers[2]);  // 99
+        io.writeIntLn(numbers[2]);  # 99
         
-        // Reference return
+        # Reference return
         int & maxRef := MathUtils.findMax(numbers);
         maxRef := 100;
-        io.writeIntLn(numbers[2]);  // 100
+        io.writeIntLn(numbers[2]);  # 100
         
-        // Method chaining with references
+        # Method chaining with references
         string text := "Hello";
         StringBuilder & builder := new StringBuilder(text);
         builder.append(" ").append("World").appendLine("!");
-        io.writeStrLn(builder.toString());  // "Hello World!\n"
+        io.writeStrLn(builder.toString());  # "Hello World!\n"
     }
 }
 ```

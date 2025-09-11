@@ -31,7 +31,7 @@ def test_004():
 
 def test_005():
     """Test final attribute declaration"""
-    source = """class Constants { final float PI = 3.14159; static void main() {} }"""
+    source = """class Constants { final float PI := 3.14159; static void main() {} }"""
     expected = "success"
     assert Parser(source).parse() == expected
 
@@ -83,7 +83,7 @@ def test_009():
     """Test array declaration and access"""
     source = """class Test { 
         static void main() { 
-            int[3] arr = {1, 2, 3};
+            int[3] arr := {1, 2, 3};
             int first;
             first := arr[0];
             arr[1] := 42;
@@ -109,6 +109,6 @@ def test_010():
 
 def test_011():
     """Test parser error: missing closing brace in class declaration"""
-    source = """class Test { int x = 1; """  # Thiếu dấu }
-    expected = "Error on line 1 col 24: <EOF>"
+    source = """class Test { int x := 1; """  # Thiếu dấu }
+    expected = "Error on line 1 col 25: <EOF>"
     assert Parser(source).parse() == expected
