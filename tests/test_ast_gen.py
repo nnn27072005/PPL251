@@ -108,7 +108,7 @@ def test_009():
 def test_010():
     """Test reference type AST generation"""
     source = """class TestClass {
-        void swap(int & a, int & b) {
+        void swap(int & a; int & b) {
             int temp := a;
             a := b;
             b := temp;
