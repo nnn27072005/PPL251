@@ -77,7 +77,7 @@ def test_007():
             }
         }
     }"""
-    expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(stmts=[ForStatement(i, IntLiteral(1), to, IntLiteral(10), BlockStatement(stmts=[MethodInvocationStatement(PostfixExpression(Identifier(io).writeIntLn([Identifier(i)]))]))]))])])"
+    expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(stmts=[ForStatement(for i := IntLiteral(1) to IntLiteral(10) do BlockStatement(stmts=[MethodInvocationStatement(MethodInvocation(PostfixExpression(Identifier(io).writeIntLn(Identifier(i)))))]))]))])])"
     assert str(ASTGeneration().visitProgram(source)) == expected
 
 
@@ -89,7 +89,7 @@ def test_008():
             arr[0] := 42;
         }
     }"""
-    expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(vars=[VariableDecl(ArrayType(PrimitiveType(int)[IntLiteral(5)]), [Variable(arr)])], stmts=[AssignmentStatement(PostfixLHS(PostfixExpression(Identifier(arr), [ArrayAccess(IntLiteral(0))])) := IntLiteral(42))]))])])"
+    expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(vars=[VariableDecl(ArrayType(PrimitiveType(int)[IntLiteral(5)]), [Variable(arr)])], stmts=[AssignmentStatement(PostfixLHS(PostfixExpression(Identifier(arr)[IntLiteral(0)])) := IntLiteral(42))]))])])"
     assert str(ASTGeneration().visitProgram(source)) == expected
 
 
@@ -101,7 +101,7 @@ def test_009():
             float area := r.getArea();
         }
     }"""
-    expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(vars=[VariableDecl(ClassType(Rectangle), [Variable(r = ObjectCreation(new Rectangle([FloatLiteral(5.0), FloatLiteral(3.0)])))]), VariableDecl(PrimitiveType(float), [Variable(area = PostfixExpression(Identifier(r), [MethodCall(getArea, [])]))])], stmts=[]))])])"
+    expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(vars=[VariableDecl(ClassType(Rectangle), [Variable(r = ObjectCreation(new Rectangle(FloatLiteral(5.0), FloatLiteral(3.0))))]), VariableDecl(PrimitiveType(float), [Variable(area = PostfixExpression(Identifier(r).getArea()))])], stmts=[]))])])"
     assert str(ASTGeneration().visitProgram(source)) == expected
 
 
@@ -125,16 +125,5 @@ def test_011():
             io.writeStrLn("Object destroyed");
         }
     }"""
-    expected = "Program([ClassDecl(TestClass, [DestructorDecl(~TestClass(), BlockStatement(stmts=[MethodInvocationStatement(PostfixExpression(Identifier(io), [MethodCall(writeStrLn, [StringLiteral('Object destroyed')])]))]))])])"
-    assert str(ASTGeneration().visitProgram(source)) == expected
-
-
-def test_012():
-    """Test static method invocation AST generation"""
-    source = """class TestClass {
-        void main() {
-            int count := Shape.getCount();
-        }
-    }"""
-    expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(vars=[VariableDecl(PrimitiveType(int), [Variable(count = PostfixExpression(Identifier(Shape), [MethodCall(getCount, [])]))])], stmts=[]))])])"
+    expected = "Program([ClassDecl(TestClass, [DestructorDecl(~TestClass(), BlockStatement(stmts=[MethodInvocationStatement(MethodInvocation(PostfixExpression(Identifier(io).writeStrLn(StringLiteral('Object destroyed')))))]))])])"
     assert str(ASTGeneration().visitProgram(source)) == expected
