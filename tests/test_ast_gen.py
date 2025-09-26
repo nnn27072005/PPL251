@@ -56,7 +56,7 @@ def test_006():
     """Test if-else statement AST generation"""
     source = """class TestClass {
         void main() {
-            if (x > 0) then {
+            if x > 0 then {
                 return x;
             } else {
                 return 0;
@@ -76,7 +76,7 @@ def test_007():
             }
         }
     }"""
-    expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(stmts=[ForStatement(for i := IntLiteral(1) to IntLiteral(10) do BlockStatement(stmts=[MethodInvocationStatement(StaticMethodInvocation(io.writeIntLn(Identifier(i))))])]))])])])"
+    expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(stmts=[ForStatement(for i := IntLiteral(1) to IntLiteral(10) do BlockStatement(stmts=[MethodInvocationStatement(StaticMethodInvocation(io.writeIntLn(Identifier(i))))]))]))])])"
     assert str(ASTGenerator(source).generate()) == expected
 
 
@@ -124,5 +124,5 @@ def test_011():
             io.writeStrLn("Object destroyed");
         }
     }"""
-    expected = "Program([ClassDecl(TestClass, [DestructorDecl(~TestClass(), BlockStatement(stmts=[MethodInvocationStatement(MethodInvocation(PostfixExpression(Identifier(io).writeStrLn(StringLiteral('Object destroyed')))))]))])])"
+    expected = "Program([ClassDecl(TestClass, [DestructorDecl(~TestClass(), BlockStatement(stmts=[MethodInvocationStatement(StaticMethodInvocation(io.writeStrLn(StringLiteral('Object destroyed'))))]))])])"
     assert str(ASTGenerator(source).generate()) == expected
