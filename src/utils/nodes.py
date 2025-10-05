@@ -445,7 +445,7 @@ class ReturnStatement(Statement):
 class MethodInvocationStatement(Statement):
     """Method invocation statement."""
 
-    def __init__(self, method_call: "MethodCall"):
+    def __init__(self, method_call: "PostfixExpression"):
         super().__init__()
         self.method_call = method_call
 
