@@ -445,15 +445,15 @@ class ReturnStatement(Statement):
 class MethodInvocationStatement(Statement):
     """Method invocation statement."""
 
-    def __init__(self, method_invocation: "MethodInvocation"):
+    def __init__(self, method_call: "MethodCall"):
         super().__init__()
-        self.method_invocation = method_invocation
+        self.method_call = method_call
 
     def accept(self, visitor, o=None):
         return visitor.visit_method_invocation_statement(self, o)
 
     def __str__(self):
-        return f"MethodInvocationStatement({self.method_invocation})"
+        return f"MethodInvocationStatement({self.method_call})"
 
 
 # ============================================================================
@@ -618,54 +618,6 @@ class ObjectCreation(Expr):
         args_str = ", ".join(str(arg) for arg in self.args) if self.args else ""
         return f"ObjectCreation(new {self.class_name}({args_str}))"
 
-
-class StaticMemberAccess(Expr):
-    """Static member access expression."""
-
-    def __init__(self, class_name: str, member_name: str):
-        super().__init__()
-        self.class_name = class_name
-        self.member_name = member_name
-
-    def accept(self, visitor, o=None):
-        return visitor.visit_static_member_access(self, o)
-
-    def __str__(self):
-        return f"StaticMemberAccess({self.class_name}.{self.member_name})"
-
-
-class MethodInvocation(Expr):
-    """Method invocation expression (for method invocation statement)."""
-
-    def __init__(self, postfix_expr: PostfixExpression):
-        super().__init__()
-        self.postfix_expr = postfix_expr
-
-    def accept(self, visitor, o=None):
-        return visitor.visit_method_invocation(self, o)
-
-    def __str__(self):
-        return f"MethodInvocation({self.postfix_expr})"
-
-
-class StaticMethodInvocation(MethodInvocation):
-    """Static method invocation expression."""
-
-    def __init__(self, class_name: str, method_name: str, args: List[Expr]):
-        super().__init__()
-        self.class_name = class_name
-        self.method_name = method_name
-        self.args = args
-
-    def accept(self, visitor, o=None):
-        return visitor.visit_static_method_invocation(self, o)
-
-    def __str__(self):
-        args_str = ", ".join(str(arg) for arg in self.args) if self.args else ""
-        return (
-            f"StaticMethodInvocation({self.class_name}.{self.method_name}({args_str}))"
-        )
-    
 
 class Identifier(Expr):
     """Identifier expression."""
