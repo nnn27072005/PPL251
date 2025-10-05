@@ -71,14 +71,14 @@ def test_007():
     """Test for loop AST generation"""
     source = """class TestClass {
         void main() {
+            int sum := 0;
             for i := 1 to 10 do {
-                io.writeIntLn(i);
+                sum := sum + i;
             }
         }
     }"""
-    expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(stmts=[ForStatement(for i := IntLiteral(1) to IntLiteral(10) do BlockStatement(stmts=[MethodInvocationStatement(StaticMethodInvocation(io.writeIntLn(Identifier(i))))]))]))])])"
+    expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(vars=[VariableDecl(PrimitiveType(int), [Variable(sum = IntLiteral(0))])], stmts=[ForStatement(for i := IntLiteral(1) to IntLiteral(10) do BlockStatement(stmts=[AssignmentStatement(IdLHS(sum) := BinaryOp(Identifier(sum), +, Identifier(i)))]))]))])])"
     assert str(ASTGenerator(source).generate()) == expected
-
 
 def test_008():
     """Test array operations AST generation"""
@@ -121,8 +121,8 @@ def test_011():
     """Test destructor AST generation"""
     source = """class TestClass {
         ~TestClass() {
-            io.writeStrLn("Object destroyed");
+            int x := 0;
         }
     }"""
-    expected = "Program([ClassDecl(TestClass, [DestructorDecl(~TestClass(), BlockStatement(stmts=[MethodInvocationStatement(StaticMethodInvocation(io.writeStrLn(StringLiteral('Object destroyed'))))]))])])"
+    expected = "Program([ClassDecl(TestClass, [DestructorDecl(~TestClass(), BlockStatement(vars=[VariableDecl(PrimitiveType(int), [Variable(x = IntLiteral(0))])], stmts=[]))])])"
     assert str(ASTGenerator(source).generate()) == expected
