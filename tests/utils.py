@@ -12,6 +12,8 @@ from build.OPLangLexer import OPLangLexer
 from build.OPLangParser import OPLangParser
 from src.utils.error_listener import NewErrorListener
 from src.astgen.ast_generation import ASTGeneration
+from src.semantics.static_checker import StaticChecker
+from src.utils.nodes import *
 
 
 class Tokenizer:
@@ -87,3 +89,32 @@ class ASTGenerator:
             return ast
         except Exception as e:
             return f"AST Generation Error: {str(e)}"
+
+
+class Checker:
+    """Class to perform static checking on the AST."""
+
+    def __init__(self, source=None, ast=None):
+        self.source = source
+        self.ast = ast
+        self.checker = StaticChecker()
+
+    def check_from_ast(self):
+        """Perform static checking on the AST."""
+        try:
+            self.checker.check_program(self.ast)
+            return "Static checking passed"
+        except Exception as e:
+            return str(e)
+
+    def check_from_source(self):
+        """Perform static checking on the source code."""
+        try:
+            ast_gen = ASTGenerator(self.source)
+            self.ast = ast_gen.generate()
+            if isinstance(self.ast, str):  # If AST generation failed
+                return self.ast
+            self.checker.check_program(self.ast)
+            return "Static checking passed"
+        except Exception as e:
+            return str(e)

@@ -105,6 +105,40 @@ The `ASTGeneration` class must:
 
 ---
 
+## Assignment 3 - Static Semantic Analysis
+
+### Required Tasks to Complete
+
+1. **Study Semantic Constraints and Error Types**
+   - Read carefully all semantic rules in `oplang-semantic_constraints_and_errors.md`
+   - Understand the comprehensive error detection requirements
+   - Master the type system and scope management rules
+
+2. **Implement the Static Checker**
+   - Create a class `StaticChecker` in `src/semantics/static_checker.py`
+   - Inherit from `ASTVisitor` for traversing AST nodes
+   - Implement comprehensive semantic analysis for all language features
+   - Handle scope management, type checking, and error detection
+
+3. **Write 100 Static Checker Test Cases**
+   - Implement **100 test cases** in `tests/test_checker.py`
+   - Test all semantic error types and valid programs
+   - Cover edge cases and complex semantic scenarios
+   - Verify correct error messages and program validation
+
+### Semantic Analysis Requirements
+
+📋 **For detailed semantic constraints, see [Semantic Constraints and Errors](oplang-semantic_constraints_and_errors.md)**
+
+### Evaluation Criteria
+
+- **Semantic Analysis**: Correctness and completeness of the `StaticChecker` implementation
+- **Error Detection**: Accurate identification of all required error types
+- **Test Coverage**: Quality and comprehensiveness of 100 semantic checker test cases
+- **Type System**: Proper implementation of HLang's static type system
+- **Scope Management**: Correct handling of variable and function scope rules
+
+
 ## Project Structure
 
 ```
