@@ -151,19 +151,19 @@ class ASTVisitor(ABC):
     def visit_object_creation(self, node: "ObjectCreation", o: Any = None):
         pass
 
-    @abstractmethod
-    def visit_static_method_invocation(
-        self, node: "StaticMethodInvocation", o: Any = None
-    ):
-        pass
+    # @abstractmethod
+    # def visit_static_method_invocation(
+    #     self, node: "StaticMethodInvocation", o: Any = None
+    # ):
+    #     pass
 
-    @abstractmethod
-    def visit_static_member_access(self, node: "StaticMemberAccess", o: Any = None):
-        pass
+    # @abstractmethod
+    # def visit_static_member_access(self, node: "StaticMemberAccess", o: Any = None):
+    #     pass
 
-    @abstractmethod
-    def visit_method_invocation(self, node: "MethodInvocation", o: Any = None):
-        pass
+    # @abstractmethod
+    # def visit_method_invocation(self, node: "MethodInvocation", o: Any = None):
+    #     pass
 
     @abstractmethod
     def visit_identifier(self, node: "Identifier", o: Any = None):

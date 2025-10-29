@@ -49,7 +49,7 @@ class Test {
     }
 }
 """
-    expected = "TypeMismatchInStatement(VariableDecl(int, [Variable(x = StringLiteral('hello'))]))"
+    expected = "TypeMismatchInStatement(VariableDecl(PrimitiveType(int), [Variable(x = StringLiteral('hello'))]))"
     assert Checker(source).check_from_source() == expected
 
 def test_005():
@@ -86,5 +86,58 @@ class Test {
     }
 }
 """
-    expected = "IllegalArrayLiteral(ArrayLiteral({BoolLiteral(true), IntLiteral(42)}))"
+    expected = "IllegalArrayLiteral(ArrayLiteral({BoolLiteral(True), IntLiteral(42)}))"
+    assert Checker(source).check_from_source() == expected
+
+def test_008():
+    """redeclared class"""
+    source = """
+        class Test {
+            static void main() {
+            }
+        }
+        class Test {
+            static void main() {
+            }
+        }
+    """
+    expected = "Redeclared(Class, Test)"
+    assert Checker(source).check_from_source() == expected
+
+def test_009():
+    """no entry point"""
+    source = """
+        class Test {
+            static void func() {
+            }
+        }
+    """
+    expected = "No Entry Point"
+    assert Checker(source).check_from_source() == expected
+
+def test_010():
+    """redeclared method"""
+    source = """
+        class Test {
+            static void main() {
+            }
+            static int main() {
+                return 0;
+            }
+        }
+    """
+    expected = "Redeclared(Method, main)"
+    assert Checker(source).check_from_source() == expected
+
+def test_011():
+    "redeclared const"
+    source = """
+        class Test {
+            static void main() {
+                final int x := 5;
+                final int x := 10;
+            }
+        }
+    """
+    expected = "Redeclared(Constant, x)"
     assert Checker(source).check_from_source() == expected

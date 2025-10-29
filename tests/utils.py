@@ -114,7 +114,9 @@ class Checker:
             self.ast = ast_gen.generate()
             if isinstance(self.ast, str):  # If AST generation failed
                 return self.ast
-            self.checker.check_program(self.ast)
-            return "Static checking passed"
+            
+            # ✅ Gán kết quả trả về từ check_program
+            result = self.checker.check_program(self.ast)
+            return result if result else "Static checking passed"
         except Exception as e:
             return str(e)

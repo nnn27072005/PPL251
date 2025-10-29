@@ -2,7 +2,7 @@
 AST Generation module for OPLang programming language.
 This module re-exports AST utilities from the utils package.
 """
-
+from .ast_generation import ASTGeneration
 from ..utils import *
 
 __all__ = [
@@ -53,9 +53,7 @@ __all__ = [
     "MemberAccess",
     "ArrayAccess",
     "ObjectCreation",
-    "StaticMethodInvocation",
-    "StaticMemberAccess",
-    "MethodInvocation",
+    "MemberAccess",
     "Identifier",
     "ThisExpression",
     "ParenthesizedExpression",
