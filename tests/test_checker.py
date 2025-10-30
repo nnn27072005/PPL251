@@ -141,3 +141,121 @@ def test_011():
     """
     expected = "Redeclared(Constant, x)"
     assert Checker(source).check_from_source() == expected
+
+def test_012():
+    "illegal constant expression"
+    source = """
+        class A
+        {
+            int x := 6;
+        }
+        class Test extends A
+        {   
+            static void main()
+            {
+                int x := 3;
+                final int y := -(2 + x + 7 + -9);
+            }
+        }
+        """
+    expected = "IllegalConstantExpression(Variable(y = UnaryOp(-, ParenthesizedExpression((BinaryOp(BinaryOp(BinaryOp(IntLiteral(2), +, Identifier(x)), +, IntLiteral(7)), +, UnaryOp(-, IntLiteral(9))))))))"
+    assert Checker(source).check_from_source() == expected
+
+def test_013():
+    source = """
+        class Test {
+            static void main() {
+                x := y + 8;   
+            }
+        }
+    """
+    expected = "UndeclaredIdentifier(x)"
+    assert Checker(source).check_from_source() == expected
+
+def test_014():
+    "illegal constant expression"
+    source = """
+        class A
+        {
+            int a := 6;
+        }
+        class Test extends A
+        {   
+            int calcX() {
+                return 3;
+            }
+            static void main()
+            {
+                int x := a;
+                final int y := -(2 + x + 7 + -9);
+            }
+        }
+        """
+    expected = "IllegalConstantExpression(Variable(y = UnaryOp(-, ParenthesizedExpression((BinaryOp(BinaryOp(BinaryOp(IntLiteral(2), +, Identifier(x)), +, IntLiteral(7)), +, UnaryOp(-, IntLiteral(9))))))))"
+    assert Checker(source).check_from_source() == expected
+
+def test_015():
+    "reference reassign"
+    source = """
+        class Test {
+            static void main() {
+                int & a := 5;
+                a := 10;
+            }
+        }
+    """
+    expected = "CannotAssignToConstant(AssignmentStatement(IdLHS(a) := IntLiteral(10)))"
+    assert Checker(source).check_from_source() == expected
+
+def test_016():
+    source = """
+        class A {int x := 2;}
+        class Test {
+            
+            static void main() {
+                A a := new A();
+                a.x := 5;
+            }
+        }
+        """
+    expected = "Static checking passed"
+    assert Checker(source).check_from_source() == expected
+
+
+def test_017():
+    "test array"
+    source = """
+        class Test {
+            static void main() {
+                int[3] arr := {1, 2, 3};
+            }
+        }
+    """
+    expected = "Static checking passed"
+    assert Checker(source).check_from_source() == expected
+
+def test_018():
+    source = """
+        class Test {
+            static void main() {
+                final int x := nil;
+            }
+            }
+    """
+    expected = "IllegalConstantExpression(Variable(x = NilLiteral(nil)))"
+    assert Checker(source).check_from_source() == expected
+
+def test_019():
+    source = """
+        class Test {
+            int a := 3;
+            int getA() {
+                return this.a;
+            }
+            static void main() {
+                int x;
+            }
+        }
+    """
+    expected = "Static checking passed"
+    assert Checker(source).check_from_source() == expected

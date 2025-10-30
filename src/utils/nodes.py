@@ -349,7 +349,6 @@ class AssignmentStatement(Statement):
         self.rhs = rhs
 
     def accept(self, visitor, o=None):
-        print("Visiting assignment:", type(visitor))
         return visitor.visit_assignment_statement(self, o)
 
     def __str__(self):
