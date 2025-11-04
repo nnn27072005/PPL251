@@ -49,7 +49,7 @@ class Test {
     }
 }
 """
-    expected = "TypeMismatchInStatement(VariableDecl(int, [Variable(x = StringLiteral('hello'))]))"
+    expected = "TypeMismatchInStatement(VariableDecl(PrimitiveType(int), [Variable(x = StringLiteral('hello'))]))"
     assert Checker(source).check_from_source() == expected
 
 def test_005():
@@ -86,5 +86,5 @@ class Test {
     }
 }
 """
-    expected = "IllegalArrayLiteral(ArrayLiteral({BoolLiteral(true), IntLiteral(42)}))"
+    expected = "IllegalArrayLiteral(ArrayLiteral({BoolLiteral(True), IntLiteral(42)}))"
     assert Checker(source).check_from_source() == expected
