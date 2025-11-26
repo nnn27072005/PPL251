@@ -13,6 +13,9 @@ Usage:
     python run.py build
     python run.py test-lexer
     python run.py test-parser
+    python run.py test-ast
+    python run.py test-checker
+    python run.py test-codegen
     python run.py clean
 
     # On macOS/Linux:
@@ -21,6 +24,9 @@ Usage:
     python3 run.py build
     python3 run.py test-lexer
     python3 run.py test-parser
+    python3 run.py test-ast
+    python3 run.py test-checker
+    python3 run.py test-codegen
     python3 run.py clean
 """
 
@@ -191,6 +197,11 @@ class OPLangBuilder:
         print(
             self.colors.yellow(
                 "  python3 run.py test-parser - Run parser tests and generate reports"
+            )
+        )
+        print(
+            self.colors.yellow(
+                "  python3 run.py test-ast    - Run AST generation tests and generate reports"
             )
         )
         print(
