@@ -16,7 +16,10 @@ The project demonstrates fundamental concepts of compiler construction including
 
 - **Lexical Analysis**: Tokenization and error handling for invalid characters, unclosed strings, and illegal escape sequences
 - **Syntax Analysis**: Grammar-based parsing using ANTLR4 (ANother Tool for Language Recognition)
-- **Error Handling**: Comprehensive error reporting for both lexical and syntactic errors
+- **AST Generation**: Building abstract syntax trees from parse trees
+- **Semantic Analysis**: Static type checking, scope management, and error detection
+- **Code Generation**: Generating JVM bytecode (Jasmin assembly) from validated AST
+- **Error Handling**: Comprehensive error reporting for all compilation phases
 - **Testing Framework**: Automated testing with HTML report generation
 
 ## Assignment 1 - Tokenizer and recognizer
@@ -135,9 +138,229 @@ The `ASTGeneration` class must:
 - **Semantic Analysis**: Correctness and completeness of the `StaticChecker` implementation
 - **Error Detection**: Accurate identification of all required error types
 - **Test Coverage**: Quality and comprehensiveness of 100 semantic checker test cases
-- **Type System**: Proper implementation of HLang's static type system
+- **Type System**: Proper implementation of OPLang's static type system
 - **Scope Management**: Correct handling of variable and function scope rules
 
+---
+
+## Assignment 4 - Jasmin Code Generation
+
+### Required Tasks to Complete
+
+1. **Study the Code Generation Framework**
+   - Understand the existing code structure in `src/codegen/` directory
+   - Study the Jasmin bytecode format and JVM instruction set
+   - Master the relationship between AST nodes and JVM bytecode instructions
+   - Review the OPLang specification for code generation requirements
+
+2. **Implement Code Generation Classes**
+   - Complete the `CodeGenerator` class in `src/codegen/codegen.py`
+   - Enhance the `Emitter` class in `src/codegen/emitter.py` if needed
+   - Generate correct Jasmin assembly code for all OPLang language features
+   - Handle proper stack management and local variable allocation
+   - Support object-oriented features: classes, methods, constructors, destructors, inheritance
+
+3. **Write 100 Code Generation Test Cases**
+   - Implement **100 test cases** in `tests/test_codegen.py`
+   - Test code generation for all language constructs:
+     - Class declarations and inheritance
+     - Static and instance methods
+     - Constructors and destructors
+     - Attributes (static/instance, final/mutable)
+     - Control flow (if, for, break, continue)
+     - Expressions (binary, unary, method calls, member access)
+     - Arrays and object creation
+     - This expression and reference types
+   - Verify correct bytecode output and program execution
+   - Cover edge cases and complex nested structures
+
+### Code Generation Requirements
+
+The code generation system must:
+
+- **Target JVM Platform**: Generate Jasmin assembly code that compiles to Java bytecode
+- **Complete Implementation**: Only modify `codegen.py` and `emitter.py` files (other files are provided)
+- **AST Traversal**: Use the visitor pattern to traverse AST nodes and emit instructions
+- **Stack Management**: Properly manage the JVM operand stack for all operations
+- **Type Handling**: Generate appropriate instructions for different data types (int, float, boolean, string, arrays, classes)
+- **Runtime Support**: Utilize the provided runtime class (`io.class`) for I/O operations
+- **Object-Oriented Support**: Handle class structure, inheritance, method dispatch, and object creation
+
+### Jasmin Code Generation Features
+
+The implementation must support:
+
+- **Class Structure**: Class declarations with inheritance (extends)
+- **Attributes**: Static and instance attributes (mutable and final)
+- **Methods**: Static and instance methods with proper parameter handling
+- **Constructors**: Default, copy, and user-defined constructors
+- **Destructors**: Destructor method generation
+- **Variable Declarations**: Local variables with proper scope management
+- **Expressions**: Arithmetic, logical, and relational operations
+- **Control Flow**: If statements, for loops, and jump statements (break, continue)
+- **Method Calls**: Static and instance method invocations
+- **Member Access**: Static and instance attribute access
+- **Arrays**: Array creation, access, and modification
+- **Object Creation**: `new` expressions with constructor calls
+- **This Expression**: Access to current object instance
+- **Reference Types**: Reference parameter and return type handling
+- **Built-in Functions**: Integration with I/O operations through `io` runtime class
+
+### OPLang I/O Functions
+
+The `io` class provides the following static methods (already implemented in `src/runtime/io.class`):
+
+**Integer I/O:**
+- `readInt()` -> int
+- `writeInt(int)` -> void
+- `writeIntLn(int)` -> void
+
+**Float I/O:**
+- `readFloat()` -> float
+- `writeFloat(float)` -> void
+- `writeFloatLn(float)` -> void
+
+**Boolean I/O:**
+- `readBool()` -> boolean
+- `writeBool(boolean)` -> void
+- `writeBoolLn(boolean)` -> void
+
+**String I/O:**
+- `readStr()` -> String
+- `writeStr(String)` -> void
+- `writeStrLn(String)` -> void
+
+### Code Generation Implementation Guide
+
+#### Available Framework Components
+
+The code generation framework provides the following components (already implemented):
+
+- **`Emitter`** (`src/codegen/emitter.py`): Generates JVM instructions as Jasmin code strings
+  - Type conversion methods (`get_jvm_type()`, `get_full_type()`)
+  - Constant loading (`emit_push_iconst()`, `emit_push_fconst()`, `emit_push_const()`)
+  - Variable operations (`emit_var()`, `emit_read_var()`, `emit_write_var()`)
+  - Array operations (`emit_aload()`, `emit_astore()`)
+  - Arithmetic/logical/relational operations
+  - Control flow (`emit_if_true()`, `emit_if_false()`, `emit_goto()`, `emit_label()`)
+  - Method operations (`emit_method()`, `emit_end_method()`, `emit_invoke_static()`, etc.)
+  - Class structure (`emit_prolog()`, `emit_epilog()`)
+
+- **`Frame`** (`src/codegen/frame.py`): Manages stack frame, local variables, and labels
+  - Stack management (`push()`, `pop()`, `get_max_op_stack_size()`)
+  - Scope management (`enter_scope()`, `exit_scope()`)
+  - Variable management (`get_new_index()`, `get_max_index()`)
+  - Loop management (`enter_loop()`, `exit_loop()`, `get_continue_label()`, `get_break_label()`)
+  - Label management (`get_new_label()`)
+
+- **`JasminCode`** (`src/codegen/jasmin_code.py`): Low-level Jasmin instruction generation
+
+- **`utils.py`**: Utility classes (`Symbol`, `Access`, `SubBody`, `FunctionType`, `ClassType`)
+
+- **`io.py`**: I/O symbol definitions for runtime integration
+
+#### Implementation Status
+
+**Already Implemented in `codegen.py`:**
+- `visit_program()` - Program structure with classes
+- `visit_class_decl()` - Class declarations
+- `visit_attribute_decl()`, `visit_attribute()` - Attribute declarations
+- `visit_method_decl()`, `generate_method()` - Method declarations
+- `visit_block_statement()` - Block statements
+- `visit_variable_decl()` - Variable declarations
+- `visit_assignment_statement()` - Assignment statements
+- `visit_return_statement()` - Return statements
+- `visit_id_lhs()` - Identifier left-hand side
+- `visit_identifier()` - Identifier expressions
+- `visit_this_expression()` - This expression
+- Literals: `visit_int_literal()`, `visit_float_literal()`, `visit_bool_literal()`, `visit_string_literal()`
+
+**To Be Implemented (TODO for students):**
+- `visit_constructor_decl()` - Constructor declarations
+- `visit_destructor_decl()` - Destructor declarations
+- `visit_if_statement()` - If statements
+- `visit_for_statement()` - For loops
+- `visit_break_statement()` - Break statements
+- `visit_continue_statement()` - Continue statements
+- `visit_method_invocation_statement()` - Method invocation statements
+- `visit_postfix_lhs()` - Postfix left-hand side (member/array access)
+- `visit_binary_op()` - Binary operations (arithmetic, logical, relational)
+- `visit_unary_op()` - Unary operations
+- `visit_postfix_expression()` - Postfix expressions
+- `visit_method_call()` - Method calls
+- `visit_member_access()` - Member access
+- `visit_array_access()` - Array access
+- `visit_object_creation()` - Object creation with `new`
+- `visit_array_literal()` - Array literals
+
+#### Type System
+
+OPLang uses `PrimitiveType` with `type_name` attribute:
+- `"int"` - Integer type
+- `"float"` - Float type
+- `"string"` - String type
+- `"boolean"` - Boolean type
+- `"void"` - Void type
+
+Helper functions in `emitter.py`:
+- `is_int_type(in_type)` - Check if type is int
+- `is_float_type(in_type)` - Check if type is float
+- `is_string_type(in_type)` - Check if type is string
+- `is_bool_type(in_type)` - Check if type is boolean
+- `is_void_type(in_type)` - Check if type is void
+
+#### Code Generation Process
+
+1. **Initialize CodeGenerator**: Create an instance of `CodeGenerator`
+2. **Visit Program**: Call `visit_program()` to process all class declarations
+3. **For Each Class**:
+   - `visit_class_decl()` generates class prolog
+   - Process members (attributes, methods, constructors, destructors)
+   - Generate class epilog
+4. **For Each Method**:
+   - `generate_method()` creates method directive
+   - Handle parameters (register in frame)
+   - Generate code for method body
+   - Handle return statement
+   - Generate end method directive
+
+#### Testing Your Implementation
+
+Use the `CodeGenerator` class in `tests/utils.py`:
+
+```python
+from utils import CodeGenerator
+from src.utils.nodes import *
+
+# Create AST
+ast = Program([
+    ClassDecl("Main", None, [
+        MethodDecl(True, PrimitiveType("void"), "main", [],
+            BlockStatement([], [
+                # statements...
+            ])
+        )
+    ])
+])
+
+# Generate and run
+codegen = CodeGenerator()
+result = codegen.generate_and_run(ast)
+assert result == expected_output
+```
+
+The generated Jasmin files (`.j`) will be created in `src/runtime/` directory, one file per class.
+
+### Evaluation Criteria
+
+- **Code Generation**: Correctness and completeness of the `CodeGenerator` and `Emitter` implementations
+- **Bytecode Quality**: Generated Jasmin code must be syntactically correct and executable
+- **Test Coverage**: Quality and comprehensiveness of 100 code generation test cases
+- **Runtime Integration**: Proper utilization of the provided runtime environment (`io.class`)
+- **Performance**: Efficient bytecode generation with optimal stack usage
+- **Object-Oriented Features**: Correct handling of classes, inheritance, polymorphism, and method dispatch
+
+---
 
 ## Project Structure
 
@@ -177,10 +400,11 @@ The `ASTGeneration` class must:
 │   │   ├── jasmin_code.py # Jasmin instruction generation
 │   │   └── utils.py      # Code generation utilities
 │   ├── runtime/          # Runtime environment
-│   │   ├── OPLang.class   # Main runtime class (compiled)
-│   │   ├── OPLang.j       # Jasmin source for main class
+│   │   ├── io.java       # I/O runtime class source
 │   │   ├── io.class      # I/O runtime class (compiled)
-│   │   └── jasmin.jar    # Jasmin assembler
+│   │   ├── jasmin.jar    # Jasmin assembler
+│   │   └── *.j           # Generated Jasmin assembly files (one per class)
+│   └── *.class           # Compiled Java bytecode files (one per class)
 │   ├── semantics/        # Semantic analysis module
 │   │   ├── __init__.py   # Package initialization
 │   │   ├── static_checker.py # StaticChecker class implementation
@@ -278,15 +502,21 @@ The project includes a comprehensive Makefile that supports:
    make test-lexer   # Test lexical analysis
    make test-parser  # Test syntax analysis
    make test-ast     # Test AST generation
+   make test-checker # Test semantic analysis
+   make test-codegen # Test code generation
    # OR using the entrypoint script:
    # Windows:
    python run.py test-lexer
    python run.py test-parser
    python run.py test-ast
+   python run.py test-checker
+   python run.py test-codegen
    # macOS/Linux:
    python3 run.py test-lexer
    python3 run.py test-parser
    python3 run.py test-ast
+   python3 run.py test-checker
+   python3 run.py test-codegen
    ```
 
 ### Available Commands
@@ -307,6 +537,8 @@ python run.py build        # Build compiler
 python run.py test-lexer   # Test lexer
 python run.py test-parser  # Test parser
 python run.py test-ast     # Test AST generation
+python run.py test-checker # Test semantic checker
+python run.py test-codegen # Test code generation
 python run.py clean        # Clean build files
 
 # macOS/Linux:
@@ -316,6 +548,8 @@ python3 run.py build       # Build compiler
 python3 run.py test-lexer  # Test lexer
 python3 run.py test-parser # Test parser
 python3 run.py test-ast    # Test AST generation
+python3 run.py test-checker # Test semantic checker
+python3 run.py test-codegen # Test code generation
 python3 run.py clean       # Clean build files
 ```
 
@@ -455,7 +689,7 @@ xdg-open reports/codegen/index.html
 The OPLang compiler follows a traditional compiler architecture:
 
 ```
-Source Code (.OPLang)
+Source Code (.oplang)
     ↓
 Lexical Analysis (OPLangLexer)
     ↓
@@ -475,9 +709,13 @@ Semantically Validated AST
     ↓
 Code Generation (CodeGenerator) ← Assignment 4
     ↓
-Jasmin Assembly Code (.j)
+Jasmin Assembly Code (.j files - one per class)
     ↓
-JVM Bytecode (.class)
+Jasmin Assembler (jasmin.jar)
+    ↓
+JVM Bytecode (.class files - one per class)
+    ↓
+JVM Execution
 ```
 
 ### Extending the Grammar

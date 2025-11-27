@@ -723,7 +723,6 @@ class ArrayAccessInConstant {
 - All elements must be exactly the same type
 - No type coercion in array literals
 - Empty arrays are allowed if type can be inferred
-- Nested array literals must also be consistent
 
 **Examples:**
 ```oplang
@@ -743,17 +742,6 @@ class MixedObjectArray {
     }
 }
 
-// Error: Nested array inconsistency
-class NestedArrayError {
-    void create() {
-        int[3][3] matrix := {
-            {1, 2, 3},
-            {4, 5.0, 6},     // IllegalArrayLiteral - float in int array
-            {7, 8, 9}
-        };
-    }
-}
-
 // Valid: Consistent array literals
 class ValidArrays {
     void create() {
@@ -761,13 +749,6 @@ class ValidArrays {
         string[3] words := {"hello", "world", "!"};   // Valid
         boolean[3] flags := {true, false, true};      // Valid
         float[3] decimals := {1.0, 2.5, 3.14};      // Valid
-        
-        // Valid nested arrays
-        int[3][3] matrix := {
-            {1, 2, 3},
-            {4, 5, 6},
-            {7, 8, 9}
-        };
         
         // Valid object arrays with same type
         Rectangle[2] shapes := {new Rectangle(1.0, 2.0), new Rectangle(3.0, 4.0)};
