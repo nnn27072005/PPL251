@@ -40,7 +40,7 @@ classmem: attrdecl | methoddecl;
 methoddecl: constructor | method | destructor;
 constructor: defaultcon | copycon | user_definedcon;
 defaultcon: ID LB RB blockstmt_no_return;
-copycon: ID LB ID AMPERSAND? 'other' RB blockstmt_no_return;
+copycon: ID LB ID AMPERSAND? OTHER RB blockstmt_no_return;
 user_definedcon: ID paramdecl blockstmt_no_return;
 method: STATIC? (typ | VOID) AMPERSAND? ID paramdecl blockstmt;
 destructor: TILDE ID LB RB blockstmt_no_return;
@@ -72,7 +72,7 @@ varinit: ASSIGN expr | ;
 // arraylit, booleanlit
 arraylit: LP arraymemlist RP;
 arraymemlist: arraymem COMMA arraymemlist | arraymem | ;
-arraymem: INTLIT | FLOATLIT | STRINGLIT | booleanlit;
+arraymem: INTLIT | FLOATLIT | STRINGLIT | booleanlit | NEW ID LB argnullist RB;
 booleanlit: TRUE | FALSE;
 
 // expression
@@ -155,7 +155,7 @@ FINAL: 'final';
 STATIC: 'static';
 TO: 'to';
 DOWNTO: 'downto';
-
+OTHER: 'other';
 // operator
 ADD: '+';
 SUB: '-';

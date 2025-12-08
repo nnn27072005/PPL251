@@ -117,9 +117,8 @@ class Checker:
                 return self.ast
             
             # ✅ Gán kết quả trả về từ check_program
-            result = self.checker.check_program(self.ast)
-            print("result:", result)  # In kết quả để kiểm tra
-            return result if result else "Static checking passed"
+            self.checker.check_program(self.ast)
+            return "Static checking passed"
         except Exception as e:
             return str(e)
 

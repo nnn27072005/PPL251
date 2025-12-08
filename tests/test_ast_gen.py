@@ -9,7 +9,6 @@ def test_001():
             x := x + 5;
         }
     }"""
-    print(str(ASTGenerator(source).generate()))
     expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(vars=[VariableDecl(final PrimitiveType(int), [Variable(x = IntLiteral(10))])], stmts=[AssignmentStatement(IdLHS(x) := BinaryOp(Identifier(x), +, IntLiteral(5)))]))])])"
     # Just check that it doesn't return an error
     assert str(ASTGenerator(source).generate()) == expected
@@ -17,8 +16,11 @@ def test_001():
 
 def test_002():
     """Test class with method declaration AST generation"""
-    source = """class TestClass {
-        void main() {
+    source = """   
+    class A{}
+    class Test { 
+        void main() { 
+            A[2] arr := {new A(), new A()};
         }
     }"""
     expected = "Program([ClassDecl(TestClass, [MethodDecl(PrimitiveType(void) main([]), BlockStatement(stmts=[]))])])"
@@ -40,7 +42,7 @@ def test_003():
 def test_004():
     """Test class with inheritance AST generation"""
     source = """class Child extends Parent {
-        int y;
+        int[0] arr := {};
     }"""
     expected = "Program([ClassDecl(Child, extends Parent, [AttributeDecl(PrimitiveType(int), [Attribute(y)])])])"
     assert str(ASTGenerator(source).generate()) == expected
@@ -1168,7 +1170,7 @@ def test_095():
 def test_096():
     """Test array attribute declaration"""
     source = """class Test {
-        int[5] arr = {};
+        int[5] arr := {};
     }"""
     expected = "Program([ClassDecl(Test, [AttributeDecl(ArrayType(PrimitiveType(int)[5]), [Attribute(arr)])])])"
     assert str(ASTGenerator(source).generate()) == expected
@@ -1203,13 +1205,19 @@ def test_099():
 
 def test_100():
     """Test a final simple combination of features"""
-    source = """class FinalTest {
-        int x;
-        void setX(int val) {
-            if val > 0 then {
-                this.x := val;
-            }
+    source = """
+    class Animal {
+    }
+    class Cat extends Animal {
+    }
+    class Test {
+        Animal A() {
+            Cat c := new Cat();
+            return c;
         }
-    }"""
+        static void main() { 
+        }
+    }
+"""
     expected = "Program([ClassDecl(FinalTest, [AttributeDecl(PrimitiveType(int), [Attribute(x)]), MethodDecl(PrimitiveType(void) setX([Parameter(PrimitiveType(int) val)]), BlockStatement(stmts=[IfStatement(if BinaryOp(Identifier(val), >, IntLiteral(0)) then BlockStatement(stmts=[AssignmentStatement(PostfixLHS(PostfixExpression(ThisExpression(this).x)) := Identifier(val))]))]))])])"
     assert str(ASTGenerator(source).generate()) == expected

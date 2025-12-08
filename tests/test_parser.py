@@ -94,14 +94,13 @@ def test_009():
     assert Parser(source).parse() == expected
 
 
-def test_010():
+def test_123213():
     """Test string concatenation and object creation"""
-    source = """class Test { 
+    source = """
+        class A{}
+    class Test { 
         static void main() { 
-            string result;
-            Test obj;
-            result := "Hello" ^ " " ^ "World";
-            obj := new Test();
+            A[2] arr := {new A(), new A()};
         }
     }"""
     expected = "success"

@@ -235,7 +235,6 @@ class ASTGeneration(OPLangVisitor):
                     all_vars.append(Variable(id_name, init))
                 else:
                     all_vars.append(Variable(id_name))
-
         return [VariableDecl(False, typ, all_vars)]
 
     
@@ -287,7 +286,7 @@ class ASTGeneration(OPLangVisitor):
             return [self.visit(ctx.arraymem())]
         return [self.visit(ctx.arraymem())] + self.visit(ctx.arraymemlist()) 
 
-    # arraymem: INTLIT | FLOATLIT | STRINGLIT | booleanlit;
+    # arraymem: INTLIT | FLOATLIT | STRINGLIT | booleanlit | NEW ID LB argnullist RB;
     def visitArraymem(self, ctx):
         if ctx.INTLIT():
             return IntLiteral(int(ctx.INTLIT().getText()))
@@ -297,6 +296,10 @@ class ASTGeneration(OPLangVisitor):
             return StringLiteral(ctx.STRINGLIT().getText())
         elif ctx.booleanlit():
             return self.visit(ctx.booleanlit())
+        elif ctx.NEW():
+            class_name = ctx.ID().getText()
+            args = self.visit(ctx.argnullist()) if ctx.argnullist() else []
+            return ObjectCreation(class_name, args)
     # Visit a parse tree produced by OPLangParser#booleanlit.
     # booleanlit: TRUE | FALSE;
     def visitBooleanlit(self, ctx:OPLangParser.BooleanlitContext):
