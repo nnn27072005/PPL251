@@ -119,7 +119,9 @@ class StaticChecker(ASTVisitor):
 
         declared_type = node.attr_type.accept(self, o)
         declared_type_name = self.get_type_name(declared_type)
-
+        if isinstance(declared_type, ClassType):
+            if not self.lookupGlobal(declared_type_name, o)[0]:
+                raise UndeclaredClass(declared_type_name)
         for attr in node.attributes:
             # nếu đã có tên tương tự trong target -> Redeclared
             if any(a["name"] == attr.name for a in target):
@@ -133,98 +135,147 @@ class StaticChecker(ASTVisitor):
                 "static": node.is_static
             })
 
-    # --- PHASE 2: check initializers against registered symbols ---
+    def _collect_attribute_decl(self, node: "AttributeDecl", o: Any = None):
+        kind = "statics" if node.is_static else "locals"
+        target = o[0][kind]["attrs"]
+
+        declared_type = node.attr_type.accept(self, o)
+        declared_type_name = self.get_type_name(declared_type)
+        if isinstance(declared_type, ClassType):
+            if not self.lookupGlobal(declared_type_name, o)[0]:
+                raise UndeclaredClass(declared_type_name)
+        
+        for attr in node.attributes:
+            # Kiểm tra trùng tên
+            if any(a["name"] == attr.name for a in target):
+                # FIX: Kiểm tra nếu là final thì báo lỗi Redeclared Constant, ngược lại là Attribute
+                raise Redeclared("Constant" if node.is_final else "Attribute", attr.name)
+            
+            target.append({
+                "name": attr.name,
+                "type": declared_type_name,
+                "const": node.is_final or isinstance(node.attr_type, ReferenceType),
+                "value_type": None,
+                "static": node.is_static
+            })
+
     def _check_attribute_decl(self, node: "AttributeDecl", o: Any = None):
-        """
-        Kiểm tra init_value bây giờ (sử dụng environment đã có tất cả attributes).
-        Sử dụng lookup trong target để update 'value_type' và báo lỗi phù hợp.
-        """
         kind = "statics" if node.is_static else "locals"
         target = o[0][kind]["attrs"]
         declared_type = node.attr_type.accept(self, o)
         declared_typename = self.get_type_name(declared_type)
+        
+        # Context scope for init expression evaluation
+        init_env = [{
+            "current": o[0]["current"],
+            "inherit": o[0].get("inherit", []),
+            "static_context": node.is_static # Mark context as static or instance
+        }] + o
+
         last_init_expr = None
         for attr in node.attributes[::-1]:
-            # tìm symbol đã được collect
             if attr.init_value:
                 last_init_expr = attr.init_value
             sym = next((a for a in target if a["name"] == attr.name), None)
             if sym is None:
-                # lý thuyết không đến đây vì collect đã thêm; nhưng vẫn phòng
                 raise UndeclaredAttribute(attr.name)
 
-            init_type = attr.init_value.accept(self, o) if attr.init_value else None
+            # Evaluate init_value in init_env
+            init_type = attr.init_value.accept(self, init_env) if attr.init_value else None
+            
             is_const = sym["const"]
+            type_check = None
             if init_type:
                 if isinstance(init_type, list):
                     type_check = init_type[0]
                 elif isinstance(init_type, dict):
                     type_check = init_type["type"]
-                else:
-                    type_check = None
+
             if is_const:
-            # giữ nguyên các kiểm tra hằng đã có
+                print(attr.init_value)
+                if isinstance(attr.init_value, NilLiteral):
+                    raise IllegalConstantExpression(NilLiteral())
                 if attr.init_value is None:
-                    raise IllegalConstantExpression(last_init_expr)
-                if type(init_type) is list:
-                    type_check = init_type[0]
-                    if init_type[0] == "nil":
-                        raise IllegalConstantExpression(attr.init_value)
-                    if init_type[0] != declared_typename:
-                        raise TypeMismatchInConstant(attr)
-                    if init_type is None:
-                        raise IllegalConstantExpression(attr.init_value)
-                    if not init_type[1]:
-                        raise IllegalConstantExpression(attr.init_value)
-                elif type(init_type) is dict:
-                    type_check = init_type["type"]
-                    if init_type["type"] == "nil":
-                        raise IllegalConstantExpression(attr.init_value)
-                    if init_type["type"] != declared_typename:
-                        raise TypeMismatchInConstant(attr)
-                    if init_type["type"] is None:
-                        raise IllegalConstantExpression(attr.init_value)
-                    if init_type.get("const", True) == False:
-                        raise IllegalConstantExpression(attr.init_value)
+                    raise IllegalConstantExpression(last_init_expr if last_init_expr else NilLiteral())
+                # Check constant expression validity
+                is_init_const_expr = False
+                is_nil = False
+                
+                if isinstance(init_type, list):
+                    is_init_const_expr = init_type[1]
+                    is_nil = (init_type[0] == "nil")
+                elif isinstance(init_type, dict):
+                    is_init_const_expr = init_type.get("const", False)
+                    is_nil = (init_type.get("type") == "nil")
+                
+                # Only ClassType variables can be assigned non-constant expressions (like 'new A()') or 'nil'
+                if not is_init_const_expr and not isinstance(node.attr_type, ClassType):
+                     raise IllegalConstantExpression(attr.init_value)
+                
+                if not is_nil:
+                     if not self.check_type(type_check, declared_typename, o):
+                        raise TypeMismatchInConstant(node)
             else:
-                # Kiểm tra type mismatch cho biến thường (giữ nguyên)
                 if init_type and not self.check_type(type_check, declared_typename, o):
                     raise TypeMismatchInStatement(node)
 
-            # ghi lại value_type để các lookup sau này (method bodies) có thể dùng
-            sym["value_type"] = type_check if init_type else None
+            sym["value_type"] = type_check
 
 
     def check_type(self, from_type, to_type, env):
         """
-        Kiểm tra ép kiểu hợp lệ (implicit coercion):
-        - int → float
-        - subclass → superclass
+        Check for type compatibility (Coercion):
+        1. Exact match (same_type)
+        2. nil -> any Class type (but not primitive)
+        3. int -> float
+        4. Subclass -> Superclass (Deep inheritance)
         """
-        # ---- Exact same type ----
+        # 1. Exact match
         if self.same_type(from_type, to_type):
             return True
 
-        # ---- int -> float ----
+        # 2. nil -> ClassType
+        # 'nil' can be assigned to any object (ClassType), but not primitives (int, float, bool, string)
+        if from_type == "nil":
+            if isinstance(to_type, str) and to_type not in ["int", "float", "boolean", "string", "void"]:
+                # Check if to_type is a declared class
+                if self.lookupGlobal(to_type, env)[0]:
+                    return True
+            return False
+
+        # 3. int -> float
         if from_type == "int" and to_type == "float":
             return True
 
-        # ---- subclass -> superclass ----
+        # 4. Subclass -> Superclass (Inheritance Check)
         if isinstance(from_type, str) and isinstance(to_type, str):
-            # Kiểm tra xem from_type có kế thừa to_type không
-            found_class = self.lookupClass(from_type, env)
+            # Use lookupGlobal to get class def, ignoring local variable shadowing
+            found_class = self.lookupGlobal(from_type, env)
             if found_class[0]:
-                parent_chain = found_class[1].get("inherit", [])
-                if to_type in parent_chain:
+                # Get immediate parents
+                parents = found_class[1].get("inherit", [])
+                
+                # Check direct inheritance
+                if to_type in parents:
                     return True
-                # hoặc kế thừa nhiều cấp
-                while parent_chain:
-                    parent = parent_chain.pop()
-                    parent_found = self.lookupClass(parent, env)
-                    if parent_found[0]:
-                        parent_chain += parent_found[1].get("inherit", [])
-                        if to_type == parent:
-                            return True
+                
+                # Check deep inheritance (Ancestors) using a queue
+                queue = list(parents)
+                visited = set(parents)
+                while queue:
+                    curr = queue.pop(0)
+                    if curr == to_type:
+                        return True
+                    
+                    # Fetch parent class info
+                    curr_cls = self.lookupGlobal(curr, env)
+                    if curr_cls[0]:
+                        grandparents = curr_cls[1].get("inherit", [])
+                        for gp in grandparents:
+                            if gp not in visited:
+                                visited.add(gp)
+                                queue.append(gp)
+
         return False
 
     def get_type_name(self, t: Any):
@@ -317,21 +368,21 @@ class StaticChecker(ASTVisitor):
 
     def lookupVarFromTail(self, name, env, current_class, parents=None):
         """
-        Tìm biến/hàm trong class hiện tại hoặc cha (kế thừa), theo hướng local → global.
-        Dùng trong truy cập `this.a` hoặc khi tra cứu attribute/method của class.
+        Tìm biến/hàm trong class hiện tại hoặc cha (kế thừa).
+        Đã sửa: Luôn tìm kiếm method bất kể ngữ cảnh (bỏ check if current_method).
         """
-        current_method = env[0].get("method", "")
-
         # --- Duyệt class hiện tại ---
         for classItem in env:
             if classItem.get("class") == current_class:
-                if current_method:
-                    for m in classItem["statics"]["methods"]:
-                        if m["name"] == name:
-                            return [True, m, "method", "static", classItem["class"]]
-                    for m in classItem["locals"]["methods"]:
-                        if m["name"] == name:
-                            return [True, m, "method", "local", classItem["class"]]
+                # Tìm trong Methods (Static & Local)
+                for m in classItem["statics"]["methods"]:
+                    if m["name"] == name:
+                        return [True, m, "method", "static", classItem["class"]]
+                for m in classItem["locals"]["methods"]:
+                    if m["name"] == name:
+                        return [True, m, "method", "local", classItem["class"]]
+                
+                # Tìm trong Attributes
                 for a in classItem["statics"]["attrs"]:
                     if a["name"] == name:
                         return [True, a, "attribute", "static", classItem["class"]]
@@ -346,13 +397,15 @@ class StaticChecker(ASTVisitor):
                 parent_class = stack[-1]
                 for classItem in env:
                     if classItem.get("class") == parent_class:
-                        if current_method:
-                            for m in classItem["statics"]["methods"]:
-                                if m["name"] == name:
-                                    return [True, m, "method", "static", classItem["class"], "inherited"]
-                            for m in classItem["locals"]["methods"]:
-                                if m["name"] == name:
-                                    return [True, m, "method", "local", classItem["class"], "inherited"]
+                        # Tìm trong Methods (Inherited)
+                        for m in classItem["statics"]["methods"]:
+                            if m["name"] == name:
+                                return [True, m, "method", "static", classItem["class"], "inherited"]
+                        for m in classItem["locals"]["methods"]:
+                            if m["name"] == name:
+                                return [True, m, "method", "local", classItem["class"], "inherited"]
+                        
+                        # Tìm trong Attributes (Inherited)
                         for a in classItem["statics"]["attrs"]:
                             if a["name"] == name:
                                 return [True, a, "attribute", "static", classItem["class"], "inherited"]
@@ -365,38 +418,64 @@ class StaticChecker(ASTVisitor):
 
     def lookupInside(self, name, env):
         """
-        Tìm identifier trong scope hiện tại:
-        - Ưu tiên local (param/biến trong block)
-        - Sau đó tìm trong class hiện tại
-        - Rồi cha (kế thừa)
+        Tìm identifier:
+        1. Duyệt ngược các scope cục bộ (Block -> Method).
+        2. Nếu không thấy, tìm trong Class Member (hiện tại + kế thừa).
         """
-        # --- Cục bộ ---
-        if "local" in env[0]:
-            local_scope = env[0]["local"]
-            for x in local_scope:
-                if name == x["name"]:
-                    return [True, x, "local"]
+        # --- 1. Tìm trong các scope cục bộ (từ trong ra ngoài) ---
+        for scope in env:
+            # Nếu gặp scope chứa biến local
+            if "local" in scope:
+                for x in scope["local"]:
+                    if x["name"] == name:
+                        return [True, x, "local"]
+            
+            # Nếu gặp ranh giới Class (scope của ClassDecl), dừng tìm kiếm biến cục bộ
+            # Vì biến cục bộ không thể "xuyên" qua ranh giới method/class ra ngoài global theo cách này
+            if "class" in scope and "statics" in scope:
+                break
 
-        # --- Trong class hiện tại hoặc cha ---
+        # --- 2. Tìm trong class hiện tại hoặc cha (Members) ---
         current_class = env[0].get("current")
         inherit = env[0].get("inherit", [])
         lookup = self.lookupVarFromTail(name, env, current_class, inherit)
         if lookup[0]:
             return lookup
 
-        # --- Không tìm thấy ---
+        # --- 3. Không tìm thấy ---
         return [False, None, None]
 
     def lookupClassMember(self, name, env, current_class):
-        # Nếu là class builtin IO → tra thẳng trong global_env
         if current_class == "io":
             for m in self.global_env:
                 if m["name"] == name:
                     return [True, m, "method", "static", "io"]
             return [False, None, None, None, None]
         
-        # Bình thường
-        found = self.lookupVarFromTail(name, env, current_class)
+        # 1. Tìm định nghĩa class hiện tại để lấy danh sách cha (inherit)
+        # Dùng lookupGlobal để chắc chắn tìm thấy Class Definition (bỏ qua local shadowing)
+        found_cls = self.lookupGlobal(current_class, env)
+        
+        full_parents = []
+        if found_cls[0]:
+            # Lấy danh sách cha trực tiếp
+            parents = found_cls[1].get("inherit", [])
+            
+            # 2. Thu thập toàn bộ danh sách tổ tiên (Deep Inheritance support)
+            # Vì lookupVarFromTail chỉ duyệt qua list parents được truyền vào mà không tự đệ quy
+            queue = list(parents)
+            while queue:
+                p = queue.pop(0)
+                if p not in full_parents:
+                    full_parents.append(p)
+                    # Tìm cha của p để thêm vào queue
+                    p_cls = self.lookupGlobal(p, env)
+                    if p_cls[0]:
+                        queue.extend(p_cls[1].get("inherit", []))
+        
+        # 3. Gọi lookupVarFromTail với danh sách đầy đủ các class cha
+        found = self.lookupVarFromTail(name, env, current_class, full_parents)
+        
         if found[0]:
             return found
         return [False, None, None, None, None]
@@ -496,11 +575,8 @@ class StaticChecker(ASTVisitor):
     
     def visit_attribute_decl(self, node: "AttributeDecl", o: Any = None):
         """
-        Kiểm tra khai báo attribute trong class, xử lý tương tự VariableDecl:
-        - Kiểm tra redeclared
-        - Kiểm tra constant expression
-        - Kiểm tra type mismatch
-        - Thêm vào môi trường class
+        Kiểm tra khai báo attribute trong class.
+        Sửa lỗi: Cho phép biến final kiểu ClassType được khởi tạo bởi non-constant expression (như new Class).
         """
         kind = "statics" if node.is_static else "locals"
         target = o[0][kind]["attrs"]
@@ -523,7 +599,7 @@ class StaticChecker(ASTVisitor):
             init_type = attr.init_value.accept(self, o) if attr.init_value else None
 
             # --- Xác định xem có là constant không ---
-            is_const = node.is_final or isinstance(node.attr_type, ReferenceType)
+            is_const = node.is_final
             if init_type:
                 if isinstance(init_type, list):
                     type_check = init_type[0]
@@ -533,33 +609,45 @@ class StaticChecker(ASTVisitor):
                     type_check = None
             else:
                 type_check = None
+            
             # --- Kiểm tra constant ---
             if is_const:
-            # giữ nguyên các kiểm tra hằng đã có
-                if attr.init_value is None:
-                    raise IllegalConstantExpression(last_init_expr)
+                if isinstance(attr.init_value, NilLiteral):
+                    raise IllegalConstantExpression(last_init_expr if last_init_expr else NilLiteral())
+                
                 if type(init_type) is list:
                     type_check = init_type[0]
                     if init_type[0] == "nil":
-                        raise IllegalConstantExpression(attr.init_value)
-                    if init_type[0] != declared_typename:
-                        raise TypeMismatchInConstant(attr)
+                         pass # nil gán cho final object OK
+                    
+                    # Logic cũ: if not init_type[1]: raise IllegalConstantExpression...
+                    # Logic mới: Nếu không phải constant expression, chỉ báo lỗi nếu KHÔNG phải là ClassType
+                    if not init_type[1]:
+                        if not isinstance(node.attr_type, ClassType):
+                            raise IllegalConstantExpression(attr.init_value)
+
+                    if init_type[0] != "nil" and not self.check_type(init_type[0], declared_typename, o):
+                        raise TypeMismatchInConstant(node)
+                    
                     if init_type is None:
                         raise IllegalConstantExpression(attr.init_value)
-                    if not init_type[1]:
-                        raise IllegalConstantExpression(attr.init_value)
+
                 elif type(init_type) is dict:
                     type_check = init_type["type"]
                     if init_type["type"] == "nil":
-                        raise IllegalConstantExpression(attr.init_value)
-                    if init_type["type"] != declared_typename:
-                        raise TypeMismatchInConstant(attr)
+                         pass
+
+                    if not init_type.get("const", False):
+                        if not isinstance(node.attr_type, ClassType):
+                             raise IllegalConstantExpression(attr.init_value)
+
+                    if init_type["type"] != "nil" and not self.check_type(init_type["type"], declared_typename, o):
+                         raise TypeMismatchInConstant(node)
+
                     if init_type["type"] is None:
                         raise IllegalConstantExpression(attr.init_value)
-                    if init_type.get("const", True) == False:
-                        raise IllegalConstantExpression(attr.init_value)
             else:
-                # Kiểm tra type mismatch cho biến thường (giữ nguyên)
+                # Kiểm tra type mismatch cho biến thường
                 if init_type and not self.check_type(type_check, declared_typename, o):
                     raise TypeMismatchInStatement(node)
 
@@ -592,6 +680,7 @@ class StaticChecker(ASTVisitor):
         # Xác định kiểu trả về
         type_name = self.get_type_name(node.return_type)
         method_info = {
+            "kind": "Method",
             "name": node.name,
             "type": type_name if isinstance(node.return_type, PrimitiveType) else str(node.return_type),
             "params": param_types,
@@ -606,25 +695,35 @@ class StaticChecker(ASTVisitor):
             "inherit": o[0].get("inherit", []),
             "local": [],
             "return_type": method_info["return_type"],
-            "method": node.name
+            "method": node.name,
+            "is_static": node.is_static
         }] + o
         # Thêm các tham số vào local scope
         list(map(lambda p: self.visit_parameter(p, local_env), node.params))
         # Duyệt thân hàm
         if node.body:
-            self.visit_block_statement(node.body, local_env)
+            # self.visit_block_statement(node.body, local_env)
+            self.visit_method_body(node.body, local_env)
         # Lưu vào môi trường class
-
+    def visit_method_body(self, node, o):
+        env = o  
+        for v in node.var_decls:
+            v.accept(self, env)
+        for s in node.statements:
+            s.accept(self, env)
      
     def visit_constructor_decl(self, node: "ConstructorDecl", o: Any = None):
         cname = o[0]["class"]
         param_types = [self.get_type_name(p.param_type) for p in node.params]
         kind = "locals"
         target = o[0][kind]["methods"]
+        if node.name != cname:
+            raise TypeMismatchInStatement(node)
         for m in target:
             if m["name"] == node.name and m["param_types"] == param_types:
                 raise Redeclared("Method", node.name)
         method_info = {
+            "kind": "Constructor",
             "name": node.name,
             "type": cname,
             "params": param_types,
@@ -646,16 +745,37 @@ class StaticChecker(ASTVisitor):
 
      
     def visit_destructor_decl(self, node: "DestructorDecl", o: Any = None):
+          for m in o[0]["locals"]["methods"]:
+            if m["name"] == node.name and m["kind"] == "Destructor" and m["param_types"] == []:
+                raise Redeclared("Destructor", node.name)
+          method_info = {
+            "kind": "Destructor",
+            "name": node.name,
+            "type": o[0]["class"],
+            "params": [],
+            "param_types": [],  # lưu để so sánh sau
+            "return_type": o[0]["class"],
+            "static": "locals"
+          }
           if node.body:
             self.visit_block_statement(node.body, [{"current": o[0]["class"], "local": []}] + o)
+          o[0]["locals"]["methods"].append(method_info)
 
      
     def visit_parameter(self, node: "Parameter", o: Any = None):
         local_scope = o[0]["local"]
         if any(v["name"] == node.name for v in local_scope):
             raise Redeclared("Parameter", node.name)
-        type = self.get_type_name(node.param_type)
-        local_scope.append({"name": node.name, "type": type, "const": False})
+
+        declared_type = node.param_type.accept(self, o)
+        type_name = self.get_type_name(declared_type)
+
+        # Nếu là ClassType thì class phải tồn tại
+        if isinstance(declared_type, ClassType):
+            if not self.lookupGlobal(type_name, o)[0]:
+                raise UndeclaredClass(type_name)
+
+        local_scope.append({"name": node.name, "type": type_name, "const": False})
 
     # Type system
      
@@ -678,14 +798,26 @@ class StaticChecker(ASTVisitor):
      
     def visit_block_statement(self, node: "BlockStatement", o: Any = None):
         # duyệt các biến và statement
-        list(map(lambda v: v.accept(self, o), node.var_decls))
-        list(map(lambda s: s.accept(self, o), node.statements))
+        new_scope = {
+            "current": o[0]["current"],
+            "inherit": o[0].get("inherit", []),
+            "local": [],
+            "return_type": o[0].get("return_type", None),
+            "method": o[0].get("method", None),
+            "in_loop": o[0].get("in_loop", False)
+        }
+        env = [new_scope] + o
+        list(map(lambda v: v.accept(self, env), node.var_decls))
+        list(map(lambda s: s.accept(self, env), node.statements))
 
 
      
     def visit_variable_decl(self, node: "VariableDecl", o: Any = None):
         declared_type = node.var_type.accept(self, o)
         declared_typename = self.get_type_name(declared_type)
+        if isinstance(declared_type, ClassType):
+            if not self.lookupGlobal(declared_typename, o)[0]:
+                raise UndeclaredClass(declared_typename)
         local_scope = o[0]["local"]
         class_env = o[1] if len(o) > 1 and isinstance(o[1], dict) and "class" in o[1] else None
         last_init_expr = None
@@ -696,7 +828,7 @@ class StaticChecker(ASTVisitor):
                 raise Redeclared("Constant" if node.is_final else "Variable", var.name)
             
             init_type = var.init_value.accept(self, o) if var.init_value else None
-            is_const = node.is_final or isinstance(node.var_type, ReferenceType)
+            is_const = node.is_final
             # Kiểm tra constant
             if init_type:
                 if isinstance(init_type, list):
@@ -707,31 +839,41 @@ class StaticChecker(ASTVisitor):
                     type_check = None
             else:
                 type_check = None
+            
             if is_const:
+                if isinstance(var.init_value, NilLiteral):
+                    raise IllegalConstantExpression(last_init_expr if last_init_expr else NilLiteral())
                 if var.init_value is None:
-                    raise IllegalConstantExpression(last_init_expr)
+                    raise IllegalConstantExpression(last_init_expr if last_init_expr else NilLiteral())
                 if type(init_type) is list:
                     type_check = init_type[0]
                     if init_type[0] == "nil":
-                        # hằng mà không có biểu thức gán ban đầu
-                        raise IllegalConstantExpression(var.init_value)
-                    if init_type[0] != declared_typename:
-                        raise TypeMismatchInConstant(var)
-                    if init_type is None:
-                        raise IllegalConstantExpression(var.init_value)
-                    if not init_type[1]:
                         raise IllegalConstantExpression(var.init_value)
                     
+                    # Sửa lỗi logic tương tự attribute_decl
+                    if not init_type[1]:
+                        if not isinstance(node.var_type, ClassType):
+                            raise IllegalConstantExpression(var.init_value)
+
+                    if init_type[0] != declared_typename and not self.check_type(init_type[0], declared_typename, o):
+                        raise TypeMismatchInConstant(node)
+                    
+                    if init_type is None:
+                        raise IllegalConstantExpression(var.init_value)
                     
                 elif type(init_type) is dict:
                     type_check = init_type["type"]
                     if init_type["type"] == "nil":
                         raise IllegalConstantExpression(var.init_value)
-                    if init_type["type"] != declared_typename:
-                        raise TypeMismatchInConstant(var)
+                    
+                    if not init_type.get("const", False): # init_type["const"] check
+                        if not isinstance(node.var_type, ClassType):
+                            raise IllegalConstantExpression(var.init_value)
+
+                    if init_type["type"] != declared_typename and not self.check_type(init_type["type"], declared_typename, o):
+                        raise TypeMismatchInConstant(node)
+                    
                     if init_type["type"] is None:
-                        raise IllegalConstantExpression(var.init_value)
-                    if init_type["const"] == False:
                         raise IllegalConstantExpression(var.init_value)
                     
             else:
@@ -763,10 +905,24 @@ class StaticChecker(ASTVisitor):
         if isinstance(lhs_info, str):
             # simple identifier
             lhs_name = lhs_info
-            # lookup symbol directly
+            
             found = self.lookupInside(lhs_name, o)
+            
+            # --- FIX START: Check static context for assignment LHS ---
+            if found[0]:
+                is_static_method = o[0].get("is_static", False)
+                # found structure: [True, symbol, kind, storage, ...]
+                # storage is at index 3 ('local' = instance member, 'static' = static member)
+                if len(found) >= 4:
+                    storage = found[3]
+                    if is_static_method and storage == 'local':
+                        # Đang ở method static mà truy cập biến instance -> Xem như không tìm thấy
+                        raise UndeclaredIdentifier(lhs_name)
+            # --- FIX END ---
+
             if not found[0]:
                 raise UndeclaredIdentifier(lhs_name)
+            
             sym = found[1]
             target_type = sym["type"]
         elif isinstance(lhs_info, dict):
@@ -788,8 +944,17 @@ class StaticChecker(ASTVisitor):
             else:
                 found_base = self.lookupInside(base_name, o)
                 if not found_base[0]:
-                    raise UndeclaredIdentifier(base_name)
-                base_sym = found_base[1]
+                    # --- FIX START: Kiểm tra nếu base là tên Class ---
+                    found_class = self.lookupClass(base_name, o)
+                    if found_class[0]:
+                        # Nếu là class, tạo một symbol giả để tiếp tục logic check phía dưới
+                        base_sym = {"type": base_name, "const": False}
+                    else:
+                        raise UndeclaredIdentifier(base_name)
+                    # --- FIX END ---
+                else:
+                    base_sym = found_base[1]
+                
                 base_type = base_sym["type"]
 
             # attribute/method/array chain: lấy phần tử cuối cùng để xác định mục tiêu gán
@@ -904,25 +1069,40 @@ class StaticChecker(ASTVisitor):
 
      
     def visit_return_statement(self, node: "ReturnStatement", o: Any = None):
-        expr_info = node.value.accept(self, o) if node.value else ["void", True]
+        # Determine expected return type from current method scope
         expected_type = o[0].get("return_type", "void")
-        # Chuẩn hóa kiểu dữ liệu về string để so sánh
-        if isinstance(expr_info, (list, tuple)):
-            actual_type = expr_info[0]
-        elif isinstance(expr_info, dict):
-            actual_type = expr_info["type"]
+        
+        if node.value:
+            expr_info = node.value.accept(self, o)
+            # Normalize expression type info
+            if isinstance(expr_info, (list, tuple)):
+                actual_type = expr_info[0]
+            elif isinstance(expr_info, dict):
+                actual_type = expr_info["type"]
+            else:
+                actual_type = str(expr_info)
         else:
-            actual_type = str(expr_info)
+            actual_type = "void"
 
-        # So sánh kiểu
+        # Coercion Check
         if not self.check_type(actual_type, expected_type, o):
             raise TypeMismatchInStatement(node)
 
      
-    def visit_method_invocation_statement(
-        self, node: "MethodInvocationStatement", o: Any = None
-    ):
-        node.method_call.accept(self, o)
+    def visit_method_invocation_statement(self, node: "MethodInvocationStatement", o: Any = None):
+        # Tạo bản sao của scope
+        new_scope = o[0].copy()
+        
+        # 1. Đánh dấu cho phép gọi hàm void
+        new_scope["is_proc"] = True
+        
+        # 2. Gắn node Statement cha vào scope để PostfixExpression nhận biết
+        new_scope["parent_stmt"] = node
+        
+        # Tạo môi trường mới
+        new_env = [new_scope] + o[1:]
+        
+        node.method_call.accept(self, new_env)
 
     # Left-hand side (LHS)
      
@@ -941,7 +1121,8 @@ class StaticChecker(ASTVisitor):
         right = node.right.accept(self, o)
         op = node.operator
 
-        numeric_ops = ["+", "-", "*", "/", "%", "\\"]
+        numeric_ops = ["+", "-", "*", "/"]
+        divint_mods = ["\\", "%"]
         compare_ops = ["<", "<=", ">", ">="]
         equality_ops = ["==", "!="]
         logical_ops = ["&&", "||"]
@@ -964,7 +1145,12 @@ class StaticChecker(ASTVisitor):
             rhs_type = right.get("type", str(right))
         # const_1 = left[1] if isinstance(left, (list, tuple)) else left.get("const", False)
         # const_2 = right[1] if isinstance(right, (list, tuple)) else right.get("const", False)
-        is_const = const_1 and const_2 
+        is_const = const_1 and const_2
+
+        if op in divint_mods:
+            if lhs_type != "int" or rhs_type != "int":
+                raise TypeMismatchInExpression(node)
+            return ["int", is_const]
         # Arithmetic
         if op in numeric_ops:
             if lhs_type not in ["int", "float"] or rhs_type not in ["int", "float"]:
@@ -979,7 +1165,7 @@ class StaticChecker(ASTVisitor):
 
         # Equality
         if op in equality_ops:
-            if lhs_type != rhs_type:
+            if lhs_type not in ["int", "boolean"] or rhs_type not in ["int", "boolean"] or lhs_type != rhs_type:
                 raise TypeMismatchInExpression(node)
             return ["boolean", is_const]
 
@@ -1019,51 +1205,262 @@ class StaticChecker(ASTVisitor):
             return [type_name, is_const]
         raise TypeMismatchInExpression(node)
      
+    # def visit_postfix_expression(self, node: "PostfixExpression", o: Any = None):
+    #     # --- 1. Lấy thông tin Primary ---
+    #     try:
+    #         primary_info = node.primary.accept(self, o)
+    #     except UndeclaredIdentifier as e:
+    #         # FIX: Nếu Identifier không tồn tại và đang được dùng để truy cập thành phần (.field, .method)
+    #         # thì coi đây là lỗi UndeclaredClass thay vì UndeclaredIdentifier.
+    #         if isinstance(node.primary, Identifier) and node.postfix_ops:
+    #             if isinstance(node.postfix_ops[0], (MemberAccess, MethodCall)):
+    #                 raise UndeclaredClass(node.primary.name)
+    #         # Nếu không phải ngữ cảnh dot access (ví dụ: truy cập mảng hoặc biến đơn lẻ), giữ nguyên lỗi cũ
+    #         raise e
+
+    #     # Normalize: Chuẩn hóa thông tin trả về từ primary
+    #     primary_type = None
+    #     is_const = False
+    #     is_class_ref = False
+    #     primary_name = None
+
+    #     if isinstance(primary_info, (list, tuple)) and len(primary_info) == 3 and primary_info[2] == "class":
+    #         primary_type = primary_info[0]   
+    #         is_const = False
+    #         is_class_ref = True
+    #         primary_name = primary_info[0]
+    #     elif isinstance(primary_info, (list, tuple)):
+    #         primary_type = primary_info[0]
+    #         is_const = primary_info[1]
+    #         if isinstance(node.primary, Identifier):
+    #             primary_name = node.primary.name
+    #         elif isinstance(node.primary, ClassType):
+    #             primary_name = node.primary.class_name
+    #         else:
+    #             primary_name = getattr(node.primary, "name", str(node.primary))
+    #     else:
+    #         primary_type = primary_info.get("type") if isinstance(primary_info, dict) else str(primary_info)
+    #         is_const = primary_info.get("const", False) if isinstance(primary_info, dict) else False
+    #         if isinstance(node.primary, Identifier):
+    #             primary_name = node.primary.name
+    #         elif isinstance(node.primary, ClassType):
+    #             primary_name = node.primary.class_name
+    #         else:
+    #             primary_name = getattr(node.primary, "name", str(node.primary))
+
+    #     if isinstance(node.primary, ThisExpression):
+    #         primary_name = "this"
+    #         primary_type = o[0].get("current")
+    #         is_class_ref = False 
+
+    #     chain = [{"kind": "primary", "name": primary_name, "type": primary_type}]
+    #     current_type = primary_type
+
+    #     # --- 2. Duyệt chuỗi Postfix Ops ---
+    #     for op in node.postfix_ops:
+    #         if isinstance(op, MemberAccess):
+    #             # Kiểm tra Type trước
+    #             is_valid_class = False
+    #             if isinstance(current_type, str):
+    #                 if current_type == "io":
+    #                     is_valid_class = True
+    #                 else:
+    #                     found_class = self.lookupClass(current_type, o)
+    #                     if found_class[0]:
+    #                         is_valid_class = True
+                
+    #             if not is_valid_class:
+    #                 raise TypeMismatchInExpression(node)
+
+    #             # Kiểm tra Attribute tồn tại
+    #             member_name = op.member_name
+    #             found = self.lookupClassMember(member_name, o, current_type)
+                
+    #             if not found[0]:
+    #                 raise UndeclaredAttribute(member_name)
+                
+    #             member_type = found[1]["type"]
+    #             member_static = found[1].get("static", False)
+
+    #             # Kiểm tra quyền truy cập static/instance
+    #             if is_class_ref and not member_static:
+    #                 raise IllegalMemberAccess(node)
+    #             if (not is_class_ref) and member_static:
+    #                 raise IllegalMemberAccess(node)
+
+    #             chain.append({"kind": "attr", "name": member_name, "type": member_type})
+    #             current_type = member_type
+    #             is_class_ref = False
+    #             is_const = found[1].get("const", False)
+
+    #         elif isinstance(op, MethodCall):
+    #             is_valid_class = False
+    #             if isinstance(current_type, str):
+    #                 if current_type == "io": is_valid_class = True
+    #                 elif self.lookupClass(current_type, o)[0]: is_valid_class = True
+                
+    #             if not is_valid_class:
+    #                 raise TypeMismatchInExpression(node)
+
+    #             method_name = op.method_name
+    #             found = self.lookupClassMember(method_name, o, current_type)
+    #             if not found[0]:
+    #                 raise UndeclaredMethod(method_name)
+                
+    #             expected_params = found[1]['params']
+    #             actual_args = [a.accept(self, o) for a in op.args]
+    #             if len(expected_params) != len(actual_args):
+    #                 raise TypeMismatchInExpression(node)
+                
+    #             for act, exp in zip(actual_args, expected_params):
+    #                 # Sửa: kiểm tra cả list và dict cho chắc chắn
+    #                 act_type = act[0] if isinstance(act, list) else (act['type'] if isinstance(act, dict) else str(act))
+    #                 if not self.check_type(act_type, exp, o):
+    #                     raise TypeMismatchInExpression(node)
+                            
+    #             ret_type = found[1].get("return_type", "void")
+    #             method_static = found[1].get("static", False)
+
+    #             if is_class_ref and not method_static:
+    #                 raise IllegalMemberAccess(node)
+    #             if (not is_class_ref) and method_static:
+    #                 raise IllegalMemberAccess(node)
+                
+    #             args = [a[0] if isinstance(a, list) else a['type'] for a in actual_args]
+    #             chain.append({"kind": "method", "name": method_name, "args": args, "ret": ret_type})
+    #             current_type = ret_type
+    #             is_class_ref = False
+
+    #         elif isinstance(op, ArrayAccess):
+    #             if not isinstance(current_type, dict) or current_type.get("kind") != "array":
+    #                 raise TypeMismatchInExpression(node)
+
+    #             idx = op.index.accept(self, o)
+    #             idx_type = idx[0] if isinstance(idx, list) else idx["type"]
+    #             idx_const = idx[1] if isinstance(idx, list) else idx.get("const", False)
+
+    #             if idx_type != "int":
+    #                 raise TypeMismatchInExpression(node)
+                
+    #             elem_type = current_type["elem"]
+    #             is_const = is_const and idx_const
+    #             chain.append({"kind": "array", "index_type": "int", "elem_type": elem_type})
+    #             current_type = elem_type
+    #             is_class_ref = False
+
+    #     res = {"type": current_type, "const": is_const, "chain": chain}
+    #     return res
+
     def visit_postfix_expression(self, node: "PostfixExpression", o: Any = None):
-    # Lấy thông tin primary từ visitor của node.primary
-        primary_info = node.primary.accept(self, o)
-        primary_type = primary_info[0]
-        is_const = primary_info[1]
-        # Xác định tên primary rõ ràng để dùng cho lookup/chaining
+        primary_info = None
+        # --- 1. RESOLVE PRIMARY (Không dùng try-except) ---
+        if isinstance(node.primary, Identifier):
+            name = node.primary.name
+            
+            # A. Tìm trong Local/Variable/Attribute scope
+            found = self.lookupInside(name, o)
+            if found[0]:
+                # Logic kiểm tra ngữ cảnh static/instance (copy từ visit_identifier)
+                is_valid = True
+                if len(found) >= 4:
+                    storage = found[3]
+                    in_method = o[0].get("method") is not None
+                    is_static_method = o[0].get("is_static", False)
+                    in_attr_init = "static_context" in o[0]
+                    is_static_ctx = o[0].get("static_context", False)
+
+                    if storage == 'local':
+                        if in_method and is_static_method: is_valid = False
+                        elif in_attr_init and is_static_ctx: is_valid = False
+                        elif not in_method and not in_attr_init: is_valid = False
+                
+                if is_valid:
+                    sym = found[1]
+                    primary_info = [sym["type"], sym.get("const", False)]
+
+            # B. Nếu không phải biến, tìm Class (Static base)
+            if primary_info is None:
+                found_cls = self.lookupClass(name, o)
+                if found_cls[0]:
+                    primary_info = [name, False, "class"]
+
+            # C. Nếu không phải class, tìm Builtin
+            if primary_info is None:
+                found_glob = self.lookupGlobal(name, o)
+                if found_glob[0] and found_glob[2] == "builtin":
+                    primary_info = [found_glob[1]["return_type"], True]
+
+            # D. Nếu vẫn None -> LỖI
+            if primary_info is None:
+                # Nếu theo sau là MemberAccess/MethodCall -> UndeclaredClass
+                if node.postfix_ops and isinstance(node.postfix_ops[0], (MemberAccess, MethodCall)):
+                    raise UndeclaredClass(name)
+                # Ngược lại -> UndeclaredIdentifier
+                raise UndeclaredIdentifier(name)
+
+        else:
+            # Primary không phải Identifier (Literal, This, Parenthesized...) -> Accept bình thường
+            primary_info = node.primary.accept(self, o)
+
+        # --- NORMALIZE PRIMARY INFO ---
+        primary_type = None
+        is_const = False
+        is_class_ref = False
+        primary_name = None
+
+        if isinstance(primary_info, (list, tuple)) and len(primary_info) == 3 and primary_info[2] == "class":
+            primary_type = primary_info[0]   
+            is_const = False
+            is_class_ref = True
+            primary_name = primary_info[0]
+        elif isinstance(primary_info, (list, tuple)):
+            primary_type = primary_info[0]
+            is_const = primary_info[1]
+            if isinstance(node.primary, Identifier):
+                primary_name = node.primary.name
+            elif isinstance(node.primary, ClassType):
+                primary_name = node.primary.class_name
+            else:
+                primary_name = getattr(node.primary, "name", str(node.primary))
+        else:
+            primary_type = primary_info.get("type") if isinstance(primary_info, dict) else str(primary_info)
+            is_const = primary_info.get("const", False) if isinstance(primary_info, dict) else False
+            if isinstance(node.primary, Identifier):
+                primary_name = node.primary.name
+            elif isinstance(node.primary, ClassType):
+                primary_name = node.primary.class_name
+            else:
+                primary_name = getattr(node.primary, "name", str(node.primary))
         if isinstance(node.primary, ThisExpression):
             primary_name = "this"
-            # chúng ta dùng "this" làm type tạm — sau đó chuyển thành class hiện hành
             primary_type = o[0].get("current")
-        elif isinstance(node.primary, Identifier):
-            primary_name = node.primary.name
-        elif isinstance(node.primary, ClassType):
-            primary_name = node.primary.class_name
-        else:
-            # fallback: nếu có thuộc tính name thì dùng, nếu không dùng str (ít gặp)
-            primary_name = getattr(node.primary, "name", str(node.primary))
+            is_class_ref = False 
 
-        # chain bắt đầu
         chain = [{"kind": "primary", "name": primary_name, "type": primary_type}]
-
-        # nếu là "this" thì chuyển current_type thành tên class hiện hành
         current_type = primary_type
 
-        # xác định xem primary là class reference (ClassName.member) hay instance
-        is_class_ref = False
-        if isinstance(node.primary, Identifier):
-            found_var = self.lookupInside(node.primary.name, o)
-            if not found_var[0]:
-                # nếu không phải biến thì có thể là tên lớp
-                is_class_ref = self.lookupClass(node.primary.name, o)[0]
-        elif isinstance(node.primary, ClassType):
-            is_class_ref = True
-
-        # duyệt các postfix ops: MemberAccess, MethodCall, ArrayAccess
-        for op in node.postfix_ops:
+        # --- 2. LOOP POSTFIX OPS ---
+        for i, op in enumerate(node.postfix_ops):
             if isinstance(op, MemberAccess):
+                # 1. Check Type (Không phải class thì không được gọi .attr)
+                is_valid_type = False
+                if isinstance(current_type, str):
+                    if current_type == "io": is_valid_type = True
+                    elif self.lookupClass(current_type, o)[0]: is_valid_type = True
+                
+                if not is_valid_type:
+                    raise TypeMismatchInExpression(node)
+
+                # 2. Check Existence (Attribute có tồn tại không)
                 member_name = op.member_name
                 found = self.lookupClassMember(member_name, o, current_type)
                 if not found[0]:
                     raise UndeclaredAttribute(member_name)
+                
                 member_type = found[1]["type"]
                 member_static = found[1].get("static", False)
 
-                # kiểm tra illegal member access
+                # 3. Check Static/Instance Access
                 if is_class_ref and not member_static:
                     raise IllegalMemberAccess(node)
                 if (not is_class_ref) and member_static:
@@ -1072,41 +1469,87 @@ class StaticChecker(ASTVisitor):
                 chain.append({"kind": "attr", "name": member_name, "type": member_type})
                 current_type = member_type
                 is_class_ref = False
+                is_const = found[1].get("const", False)
 
             elif isinstance(op, MethodCall):
+                # 1. Check Type
+                is_valid_type = False
+                if isinstance(current_type, str):
+                    if current_type == "io": is_valid_type = True
+                    elif self.lookupClass(current_type, o)[0]: is_valid_type = True
+                
+                if not is_valid_type:
+                    raise TypeMismatchInExpression(node)
+
+                # 2. Check Existence
                 method_name = op.method_name
                 found = self.lookupClassMember(method_name, o, current_type)
                 if not found[0]:
                     raise UndeclaredMethod(method_name)
+                
+                # 3. Check Params
                 expected_params = found[1]['params']
-                actual_args = [a.accept(self, o) for a in op.args]
+                
+                # Tham số hàm là Expression context -> Tắt is_proc
+                arg_scope = o[0].copy()
+                arg_scope["is_proc"] = False
+                if "parent_stmt" in arg_scope:
+                    del arg_scope["parent_stmt"]
+                arg_env = [arg_scope] + o[1:]
+                
+                actual_args = [a.accept(self, arg_env) for a in op.args]
+
                 if len(expected_params) != len(actual_args):
                     raise TypeMismatchInExpression(node)
+                
                 for act, exp in zip(actual_args, expected_params):
-                    if type(act) is list:
-                        if act[0] != exp:
+                    act_type = act[0] if isinstance(act, list) else (act['type'] if isinstance(act, dict) else str(act))
+                    if not self.check_type(act_type, exp, o):
+                        if o[0].get("parent_stmt"):
+                            # Nếu đang được gọi trực tiếp từ MethodInvocationStatement
+                            raise TypeMismatchInStatement(o[0]["parent_stmt"])
+                        else:
+                            # Ngữ cảnh expression bình thường
                             raise TypeMismatchInExpression(node)
-                    else:
-                        if act['type'] != exp:
-                            raise TypeMismatchInExpression(node)
+                            
                 ret_type = found[1].get("return_type", "void")
                 method_static = found[1].get("static", False)
-                # kiểm tra illegal member access cho method
+
+                # 4. Check Static/Instance
                 if is_class_ref and not method_static:
                     raise IllegalMemberAccess(node)
                 if (not is_class_ref) and method_static:
                     raise IllegalMemberAccess(node)
-                args = [a[0] if type(a) is list else a['type'] for a in actual_args]
+
+                # 5. Check VOID & Context
+                if ret_type == "void":
+                    is_last_op = (i == len(node.postfix_ops) - 1)
+                    if not is_last_op:
+                        raise TypeMismatchInExpression(node)
+                    
+                    # Lấy cờ từ o[0] (lúc này o[0] đã an toàn và chứa đủ thông tin)
+                    is_proc = o[0].get("is_proc", False)
+                    if not is_proc:
+                        raise TypeMismatchInExpression(node)
+
+                args = [a[0] if isinstance(a, list) else a['type'] for a in actual_args]
                 chain.append({"kind": "method", "name": method_name, "args": args, "ret": ret_type})
                 current_type = ret_type
                 is_class_ref = False
 
             elif isinstance(op, ArrayAccess):
+                if not isinstance(current_type, dict) or current_type.get("kind") != "array":
+                    raise TypeMismatchInExpression(node)
+
+                # Index context -> Tắt is_proc (mặc định)
                 idx = op.index.accept(self, o)
-                idx_type, idx_const = idx[0], idx[1]
+                idx_type = idx[0] if isinstance(idx, list) else idx["type"]
+                idx_const = idx[1] if isinstance(idx, list) else idx.get("const", False)
+
                 if idx_type != "int":
                     raise TypeMismatchInExpression(node)
-                elem_type = current_type["elem"] if isinstance(current_type, dict) and current_type.get("kind") == "array" else "element"
+                
+                elem_type = current_type["elem"]
                 is_const = is_const and idx_const
                 chain.append({"kind": "array", "index_type": "int", "elem_type": elem_type})
                 current_type = elem_type
@@ -1129,7 +1572,55 @@ class StaticChecker(ASTVisitor):
         found = self.lookupClass(class_name, o)
         if not found[0]:
             raise UndeclaredClass(class_name)
-        return [class_name, False]
+        
+        class_env = found[1]
+        
+        # Collect argument types
+        arg_types = []
+        for arg in node.args:
+            arg_info = arg.accept(self, o)
+            # Normalize type info
+            if isinstance(arg_info, (list, tuple)):
+                arg_types.append(arg_info[0])
+            elif isinstance(arg_info, dict):
+                arg_types.append(arg_info["type"])
+            else:
+                arg_types.append(str(arg_info))
+                
+        # Find constructors
+        # Constructors are stored in locals["methods"] with kind="Constructor"
+        constructors = [
+            m for m in class_env["locals"]["methods"] 
+            if m.get("kind") == "Constructor"
+        ]
+        
+        # Logic for default constructor
+        if len(constructors) == 0:
+            # No explicit constructors -> implicit default constructor ()
+            if len(arg_types) == 0:
+                return [class_name, False]
+            else:
+                raise TypeMismatchInExpression(node)
+        
+        # Check against explicit constructors
+        for cons in constructors:
+            param_types = cons["param_types"]
+            if len(param_types) != len(arg_types):
+                continue
+            
+            # Check type compatibility
+            match = True
+            for i in range(len(param_types)):
+                # check_type(from, to, env)
+                if not self.check_type(arg_types[i], param_types[i], o):
+                    match = False
+                    break
+            
+            if match:
+                return [class_name, False]
+                
+        # No matching constructor found
+        raise TypeMismatchInExpression(node)
  
     # def visit_static_method_invocation(
     #     self, node: "StaticMethodInvocation", o: Any = None
@@ -1143,36 +1634,59 @@ class StaticChecker(ASTVisitor):
     #     pass
  
     def visit_identifier(self, node: "Identifier", o: Any = None):
+        # 1. Look in local/class scope
         found = self.lookupInside(node.name, o)
-        if not found[0]:
-            found = self.lookupClassMember(node.name, o, o[0].get("current", ""))
-        if not found[0]:
-            found = self.lookupGlobal(node.name, o)
-        if not found[0]:
-            raise UndeclaredIdentifier(node.name)
-        symbol = found[1]
-        if "class" in symbol and symbol["class"] == "io":
-        # return kiểu đặc biệt để postfix expression hiểu đây là class reference
-            return ["io", False]
+        if found[0]:
+            is_valid = True
+            if len(found) >= 4:
+                storage = found[3]
+                
+                # Context flags
+                in_method = o[0].get("method") is not None
+                is_static_method = o[0].get("is_static", False)
+                
+                # Attribute init context
+                in_attr_init = "static_context" in o[0]
+                is_static_ctx = o[0].get("static_context", False)
 
-        # --- class thông thường (nếu sau này có thể truy cập ClassName.method) ---
-        if "class" in symbol and "statics" in symbol:
-            return [symbol["class"], False]
-        res = [symbol["type"], symbol.get("const", False)]
-        return res
+                if storage == 'local':
+                    if in_method:
+                        if is_static_method: is_valid = False
+                    elif in_attr_init:
+                        if is_static_ctx: is_valid = False
+                    else:
+                        # Not in method and not in specific attr context -> likely global/class level
+                        # without proper context wrapper. 
+                        # This should typically be invalid for instance members.
+                        is_valid = False
+
+            if is_valid:
+                sym = found[1]
+                return [sym["type"], sym.get("const", False)]
+        
+        # 2. Look for Class (Static reference base)
+        found_cls = self.lookupClass(node.name, o)
+        if found_cls[0]:
+            return [node.name, False, "class"]
+
+        # 3. Builtin
+        found_glob = self.lookupGlobal(node.name, o)
+        if found_glob[0] and found_glob[2] == "builtin":
+            return [found_glob[1]["return_type"], True]
+
+        raise UndeclaredIdentifier(node.name)
+
 
      
-    # def visit_this_expression(self, node: "ThisExpression", o: Any = None):
-    #     return [o[0]["current"], False]
     def visit_this_expression(self, node: "ThisExpression", o: Any = None):
-        # nếu method hiện tại là static thì cấm dùng this
-        if o[0].get("method") and isinstance(o[1], dict):
-            # o[1] chính là class_env phía sau
-            # kiểm tra method info trong class_env
-            methods = o[1]["statics"]["methods"]  # static methods của class này
-            for m in methods:
-                if m["name"] == o[0]["method"]:
-                    raise IllegalMemberAccess(node)  # dùng this trong static context
+        # Disallow in static method
+        if o[0].get("method") and o[0].get("is_static", False):
+            raise IllegalMemberAccess(node)
+        
+        # Disallow in static attribute initialization
+        if o[0].get("static_context", False):
+             raise IllegalMemberAccess(node)
+             
         return [o[0]["current"], False]
 
 
