@@ -1,76 +1,3 @@
-# """
-# Test cases for OPLang code generation.
-# This file contains test cases for the code generator.
-# Students should add more test cases here.
-# """
-
-# from src.utils.nodes import *
-# from utils import CodeGenerator
-
-
-# def test_001():
-#     """Test basic class with main method and print statement"""
-#     ast = Program([
-#         ClassDecl(
-#             "Main",
-#             None,
-#             [
-#                 MethodDecl(
-#                     True,  # is_static
-#                     PrimitiveType("void"),
-#                     "main",
-#                     [],
-#                     BlockStatement([], [
-#                         MethodInvocationStatement(
-#                             PostfixExpression(
-#                                 Identifier("print"),
-#                                 [MethodCall("print", [StringLiteral("Hello World")])]
-#                             )
-#                         )
-#                     ])
-#                 )
-#             ]
-#         )
-#     ])
-#     expected = "Hello World"
-#     result = CodeGenerator().generate_and_run(ast)
-#     assert result == expected, f"Expected '{expected}', got '{result}'"
-
-
-# def test_002():
-#     """Test integer literal"""
-#     ast = Program([
-#         ClassDecl(
-#             "Main",
-#             None,
-#             [
-#                 MethodDecl(
-#                     True,
-#                     PrimitiveType("void"),
-#                     "main",
-#                     [],
-#                     BlockStatement([], [
-#                         MethodInvocationStatement(
-#                             PostfixExpression(
-#                                 Identifier("print"),
-#                                 [MethodCall("print", [
-#                                     PostfixExpression(
-#                                         Identifier("int2str"),
-#                                         [MethodCall("int2str", [IntLiteral(42)])]
-#                                     )
-#                                 ])]
-#                             )
-#                         )
-#                     ])
-#                 )
-#             ]
-#         )
-#     ])
-#     expected = "42"
-#     result = CodeGenerator().generate_and_run(ast)
-#     assert result == expected, f"Expected '{expected}', got '{result}'"
-
-
 # # TODO: Add more test cases here
 # # Students should implement at least 100 test cases covering:
 # # - All literal types (int, float, boolean, string, array, nil)
@@ -87,10 +14,10 @@
 # # - Constructors and destructors
 # # - Inheritance and polymorphism
 
-"""
-Test cases for OPLang code generation.
-This file contains test cases for the code generator.
-"""
+# """
+# Test cases for OPLang code generation.
+# This file contains test cases for the code generator.
+# """
 
 from src.utils.nodes import *
 from utils import CodeGenerator
@@ -298,17 +225,25 @@ def test_009():
 # 8. Class & Object
 def test_010():
     """Test Class instantiation and field access"""
-    # class Point { int x; int y; }
-    # class Main { void main() { Point p := new Point(); p.x := 10; io.writeInt(p.x); } }
     input_ast = Program([
         ClassDecl("Point", None, [
-            AttributeDecl(False, False, PrimitiveType("int"), [Attribute("x"), Attribute("y")])
+            AttributeDecl(False, False, PrimitiveType("int"), [Attribute("x"), Attribute("y")]),
+            ConstructorDecl('Point', [], BlockStatement([],
+                                                        # [
+                                                        #     AssignmentStatement(PostfixExpression(Identifier("this"), [MemberAccess("x")]), IntLiteral(0)),
+                                                        #     AssignmentStatement(PostfixExpression(Identifier("this"), [MemberAccess("y")]), IntLiteral(0))
+                                                        # ]
+                                                        []
+            ))
         ]),
         ClassDecl("Main", None, [
             MethodDecl(True, PrimitiveType("void"), "main", [],
                 BlockStatement([
                     VariableDecl(False, ClassType("Point"), [
-                        Variable("p", ObjectCreation("Point", []))
+                        Variable("p", ObjectCreation("Point", [])),
+                    ]),
+                    VariableDecl(False, PrimitiveType("int"), [
+                        Variable("x")
                     ])
                 ], [
                     AssignmentStatement(
@@ -319,12 +254,21 @@ def test_010():
                         MethodCall("writeInt", [
                             PostfixExpression(Identifier("p"), [MemberAccess("x")])
                         ])
+                    ])),
+                    AssignmentStatement(
+                        # x = p.x
+                        IdLHS("x"),
+                        PostfixExpression(Identifier("p"), [MemberAccess("x")])
+                        # IntLiteral(99)
+                    ),
+                    MethodInvocationStatement(PostfixExpression(Identifier("io"), [
+                        MethodCall("writeInt", [Identifier("x")])
                     ]))
                 ])
             )
         ])
     ])
-    expect = "99"
+    expect = "9999"
     assert CodeGenerator().generate_and_run(input_ast) == expect
 
 # 9. Short-circuit Logic

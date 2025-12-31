@@ -97,8 +97,7 @@ class CodeGenerator(ASTVisitor):
 
     def visit_attribute(self, node: "Attribute", o: Any = None):
         attr_decl = o
-        class_name = self.current_class
-        field_name = class_name + "/" + node.name
+        field_name = node.name 
         safe_type = self.sanitize_type(attr_decl.attr_type)
         
         if attr_decl.is_static:
@@ -586,8 +585,12 @@ class CodeGenerator(ASTVisitor):
                     field_type = PrimitiveType("int")
                     if isinstance(current_type, ClassType):
                         field_type = self.class_fields.get(current_type.class_name, {}).get(op.member_name, field_type)
+                    
+                    # FIX: Construct Class/Field name for getfield
+                    class_name = current_type.class_name if isinstance(current_type, ClassType) else ""
+                    full_field_name = class_name + "/" + op.member_name
                         
-                    self.emit.print_out(self.emit.emit_get_field(op.member_name, current_type, o.frame))
+                    self.emit.print_out(self.emit.emit_get_field(full_field_name, field_type, o.frame))
                     current_type = field_type
                 
             elif isinstance(op, ArrayAccess):
@@ -603,10 +606,8 @@ class CodeGenerator(ASTVisitor):
     def visit_array_access(self, node: "ArrayAccess", o: Access = None): pass
 
     def visit_object_creation(self, node: "ObjectCreation", o: Access = None):
-        # FIX: Call JasminCode.emitNEW directly as Emitter.emit_new is missing
         self.emit.print_out(self.emit.jvm.emitNEW(node.class_name))
-        o.frame.push() # new pushes ref
-        
+        o.frame.push() 
         self.emit.print_out(self.emit.emit_dup(o.frame))
         
         param_types = []
@@ -657,7 +658,6 @@ class CodeGenerator(ASTVisitor):
         size = len(node.value)
         if size == 0:
              self.emit.print_out(self.emit.emit_push_iconst(0, o.frame))
-             # FIX: Call emitNEWARRAY directly
              self.emit.print_out(self.emit.jvm.emitNEWARRAY("int"))
              o.frame.pop(); o.frame.push()
              return "", ArrayType(PrimitiveType("int"), 0)
@@ -667,7 +667,6 @@ class CodeGenerator(ASTVisitor):
         
         safe_first_type = self.sanitize_type(first_type)
         
-        # FIX: Call emitNEWARRAY/emitANEWARRAY directly and handle stack
         if is_int_type(safe_first_type):
             self.emit.print_out(self.emit.jvm.emitNEWARRAY("int"))
         elif is_float_type(safe_first_type):
@@ -677,7 +676,7 @@ class CodeGenerator(ASTVisitor):
         else:
              self.emit.print_out(self.emit.jvm.emitANEWARRAY("java/lang/Object"))
         
-        o.frame.pop(); o.frame.push() # Update stack logic for newarray
+        o.frame.pop(); o.frame.push()
 
         for i, elem in enumerate(node.value):
             self.emit.print_out(self.emit.emit_dup(o.frame))

@@ -416,7 +416,7 @@ def test_028():
         
         class ValidCoercion {
             int x := 10;
-            float y := x; # int to float coercion
+            float y := this.x; # int to float coercion
             Parent p := new Child(15, "John");
             static void main() {
                 
@@ -1135,7 +1135,7 @@ def test_073():
     # access inherited attribute successfully (should pass)
     source = """
     class P { int x := 1; }
-    class C extends P { int y := x; }
+    class C extends P { int y := this.x; }
     class Test { static void main() {} }
     """
     expected = "Static checking passed"
@@ -1457,7 +1457,7 @@ def test_095():
         }
     }
 """
-    expected = "Static checking passed"
+    expected = "UndeclaredIdentifier(NUMBERS)"
     assert Checker(source).check_from_source() == expected
 
 def test_096():
@@ -1538,17 +1538,15 @@ def test_099():
 def test_100():
     source = """
         class Test {
-            final int a := 1;
+            int a := 1;
             Test(){
             }
+            int a(){return 2;}
             static void main() {
-            }
-            ~Test(){
-                this.a := 2;
             }
         }
     """
-    expected = "CannotAssignToConstant(AssignmentStatement(PostfixLHS(PostfixExpression(ThisExpression(this).a)) := IntLiteral(2)))"
+    expected = "Redeclared(Method, a)"
     assert Checker(source).check_from_source() == expected
 
 
