@@ -7,7 +7,7 @@ Java bytecode using the Emitter and Frame classes.
 from typing import Any, List, Optional
 from ..utils.visitor import ASTVisitor
 from ..utils.nodes import *
-from .emitter import Emitter, is_void_type, is_int_type, is_float_type, is_string_type, is_bool_type
+from .emitter import Emitter
 from .frame import Frame
 from .error import IllegalOperandException, IllegalRuntimeException
 from .io import IO_SYMBOL_LIST
@@ -24,6 +24,7 @@ class CodeGenerator(ASTVisitor):
     def __init__(self):
         self.current_class = None
         self.emit = None
+        self.current_superclass = None
         # Global Symbol Tables to track Class Definitions
         self.class_fields = {}
         self.class_methods = {}
@@ -46,6 +47,23 @@ class CodeGenerator(ASTVisitor):
             return ReferenceType(self.sanitize_type(t.referenced_type))
         return t
 
+    # --- Safe Type Checkers (Avoid reliance on emitter's strict type() checks) ---
+    def is_int(self, t):
+        return hasattr(t, "type_name") and t.type_name == "int"
+
+    def is_float(self, t):
+        return hasattr(t, "type_name") and t.type_name == "float"
+
+    def is_bool(self, t):
+        return hasattr(t, "type_name") and t.type_name == "boolean"
+
+    def is_string(self, t):
+        return hasattr(t, "type_name") and t.type_name == "string"
+
+    def is_void(self, t):
+        return hasattr(t, "type_name") and t.type_name == "void"
+    # --------------------------------------------------------------------------------
+
     # ============================================================================
     # Program and Class Declarations
     # ============================================================================
@@ -67,23 +85,88 @@ class CodeGenerator(ASTVisitor):
         # Phase 2: Generate Code
         for class_decl in node.class_decls:
             self.visit(class_decl, o)
+        
 
     def visit_class_decl(self, node: "ClassDecl", o: Any = None):
         self.current_class = node.name
+        self.current_superclass = node.superclass if node.superclass else "java/lang/Object"
         class_file = node.name + ".j"
         self.emit = Emitter(class_file)
         
         # Cache static methods for return type inference within current class
         self.user_static_methods = {}
+        has_constructor = False  # Flag to check if constructor exists
+        
         for member in node.members:
             if isinstance(member, MethodDecl) and member.is_static:
                 self.user_static_methods[member.name] = member.return_type
+            if isinstance(member, ConstructorDecl):
+                has_constructor = True
 
-        superclass = node.superclass if node.superclass else "java/lang/Object"
-        self.emit.print_out(self.emit.emit_prolog(node.name, superclass))
+        self.emit.print_out(self.emit.emit_prolog(node.name, self.current_superclass))
         
         for member in node.members:
             self.visit(member, o)
+
+        static_init_stmts = []
+        for member in node.members:
+            if isinstance(member, AttributeDecl) and member.is_static:
+                for attr in member.attributes:
+                    if attr.init_value is not None:
+                        static_init_stmts.append((attr, member.attr_type))
+
+        if len(static_init_stmts) > 0:
+            # Generate static initializer method
+            self.emit.print_out(self.emit.emit_method("<clinit>", FunctionType([], PrimitiveType("void")), True))
+            
+            frame = Frame("<clinit>", PrimitiveType("void"))
+            frame.enter_scope(True)
+            self.emit.print_out(self.emit.emit_label(frame.get_start_label(), frame))
+
+            for attr, attr_type in static_init_stmts:
+                # Compile init expression
+                # Note: Static context does not have 'this', use IO_SYMBOL_LIST for globals
+                code, typ = self.visit(attr.init_value, Access(frame, IO_SYMBOL_LIST))
+                self.emit.print_out(code)
+
+                # Type coercion (e.g., int -> float)
+                safe_type = self.sanitize_type(attr_type)
+                if self.is_float(safe_type) and self.is_int(typ):
+                    self.emit.print_out(self.emit.emit_i2f(frame))
+                
+                # Assign to static field
+                lexeme = self.current_class + "/" + attr.name
+                self.emit.print_out(self.emit.emit_put_static(lexeme, safe_type, frame))
+
+            self.emit.print_out(self.emit.emit_return(PrimitiveType("void"), frame))
+            self.emit.print_out(self.emit.emit_label(frame.get_end_label(), frame))
+            self.emit.print_out(self.emit.emit_end_method(frame))
+            frame.exit_scope()
+        
+        # --- AUTO-GENERATE DEFAULT CONSTRUCTOR IF MISSING ---
+        if not has_constructor:
+            # Generate: public <init>() { super(); }
+            self.emit.print_out(self.emit.emit_method("<init>", FunctionType([], PrimitiveType("void")), False))
+            
+            frame = Frame("<init>", PrimitiveType("void"))
+            frame.enter_scope(True)
+            this_idx = frame.get_new_index() # Index 0 for 'this'
+            
+            self.emit.print_out(self.emit.emit_label(frame.get_start_label(), frame))
+            
+            # Load 'this'
+            self.emit.print_out(self.emit.emit_read_var("this", ClassType(node.name), this_idx, frame))
+            self.emit.print_out(self.emit.emit_invoke_special(
+                frame, 
+                self.current_superclass + "/<init>", 
+                FunctionType([], PrimitiveType("void"))
+            ))
+            
+            self.emit.print_out(self.emit.emit_return(PrimitiveType("void"), frame))
+            self.emit.print_out(self.emit.emit_label(frame.get_end_label(), frame))
+            self.emit.print_out(self.emit.emit_end_method(frame))
+            frame.exit_scope()
+        # ----------------------------------------------------
         
         self.emit.emit_epilog()
 
@@ -152,7 +235,11 @@ class CodeGenerator(ASTVisitor):
         
         # Super()
         self.emit.print_out(self.emit.emit_read_var("this", ClassType(self.current_class), this_idx, frame))
-        self.emit.print_out(self.emit.emit_invoke_special(frame))
+        self.emit.print_out(self.emit.emit_invoke_special(
+            frame, 
+            self.current_superclass + "/<init>", 
+            FunctionType([], PrimitiveType("void"))
+        ))
         
         o = SubBody(frame, sym_list)
         self.visit(node.body, o)
@@ -198,7 +285,7 @@ class CodeGenerator(ASTVisitor):
         func_type = FunctionType(param_types, return_type)
         
         # Handle main method signature for JVM (String[] args)
-        is_main = (method_name == "main" and len(node.params) == 0 and is_static and is_void_type(return_type))
+        is_main = (method_name == "main" and len(node.params) == 0 and is_static and self.is_void(return_type))
         
         if is_main:
             str_arr_type = ArrayType(PrimitiveType("string"), 0)
@@ -235,12 +322,12 @@ class CodeGenerator(ASTVisitor):
         # Ensure return
         self.emit.print_out(self.emit.emit_label(to_label, frame))
         
-        if is_void_type(return_type):
+        if self.is_void(return_type):
             self.emit.print_out(self.emit.emit_return(return_type, frame))
         else:
-            if is_int_type(return_type) or is_bool_type(return_type):
+            if self.is_int(return_type) or self.is_bool(return_type):
                 self.emit.print_out(self.emit.emit_push_iconst(0, frame))
-            elif is_float_type(return_type):
+            elif self.is_float(return_type):
                 self.emit.print_out(self.emit.emit_push_fconst("0.0", frame))
             else:
                 self.emit.print_out(self.emit.jvm.emitPUSHNULL())
@@ -293,9 +380,32 @@ class CodeGenerator(ASTVisitor):
             if var.init_value is not None:
                 code, typ = self.visit(var.init_value, Access(frame, o.sym))
                 self.emit.print_out(code)
-                if is_float_type(safe_var_type) and is_int_type(typ):
+                if self.is_float(safe_var_type) and self.is_int(typ):
                     self.emit.print_out(self.emit.emit_i2f(frame))
                 self.emit.print_out(self.emit.emit_write_var(var.name, safe_var_type, idx, frame))
+            else:
+                # [FIX START] Default Initialization
+                if self.is_int(safe_var_type) or self.is_bool(safe_var_type):
+                    self.emit.print_out(self.emit.emit_push_iconst(0, frame))
+                    self.emit.print_out(self.emit.emit_write_var(var.name, safe_var_type, idx, frame))
+                elif self.is_float(safe_var_type):
+                    self.emit.print_out(self.emit.emit_push_fconst("0.0", frame))
+                    self.emit.print_out(self.emit.emit_write_var(var.name, safe_var_type, idx, frame))
+                elif isinstance(safe_var_type, ArrayType):
+                    self.emit.print_out(self.emit.emit_push_iconst(safe_var_type.size, frame))
+                    elem_type = self.sanitize_type(safe_var_type.element_type)
+                    if self.is_int(elem_type): self.emit.print_out(self.emit.jvm.emitNEWARRAY("int"))
+                    elif self.is_float(elem_type): self.emit.print_out(self.emit.jvm.emitNEWARRAY("float"))
+                    elif self.is_bool(elem_type): self.emit.print_out(self.emit.jvm.emitNEWARRAY("boolean"))
+                    elif self.is_string(elem_type): self.emit.print_out(self.emit.jvm.emitANEWARRAY("java/lang/String"))
+                    elif isinstance(elem_type, ClassType): self.emit.print_out(self.emit.jvm.emitANEWARRAY(elem_type.class_name))
+                    else: self.emit.print_out(self.emit.jvm.emitANEWARRAY("java/lang/Object"))
+                    self.emit.print_out(self.emit.emit_write_var(var.name, safe_var_type, idx, frame))
+                else:
+                    self.emit.print_out(self.emit.jvm.emitPUSHNULL())
+                    frame.push() # [Important] Update frame tracking for null
+                    self.emit.print_out(self.emit.emit_write_var(var.name, safe_var_type, idx, frame))
+                # [FIX END]
         
         return SubBody(frame, new_sym + o.sym)
 
@@ -309,7 +419,7 @@ class CodeGenerator(ASTVisitor):
         
         if isinstance(node.lhs, IdLHS):
              sym = next(filter(lambda x: x.name == node.lhs.name, o.sym), None)
-             if sym and is_float_type(sym.type) and is_int_type(rhs_type):
+             if sym and self.is_float(sym.type) and self.is_int(rhs_type):
                  self.emit.print_out(self.emit.emit_i2f(o.frame))
         
         lhs_code, _ = self.visit(node.lhs, Access(o.frame, o.sym, is_left=True))
@@ -388,7 +498,7 @@ class CodeGenerator(ASTVisitor):
         code, typ = self.visit(node.value, Access(o.frame, o.sym))
         self.emit.print_out(code)
         
-        if is_float_type(o.frame.return_type) and is_int_type(typ):
+        if self.is_float(o.frame.return_type) and self.is_int(typ):
             self.emit.print_out(self.emit.emit_i2f(o.frame))
             typ = PrimitiveType("float")
             
@@ -398,8 +508,7 @@ class CodeGenerator(ASTVisitor):
         if o is None: return
         code, typ = self.visit(node.method_call, Access(o.frame, o.sym))
         self.emit.print_out(code)
-        
-        if typ is not None and not is_void_type(typ):
+        if typ is not None and not self.is_void(typ):
             self.emit.print_out(self.emit.emit_pop(o.frame))
 
     # ============================================================================
@@ -417,14 +526,13 @@ class CodeGenerator(ASTVisitor):
             raise IllegalOperandException(f"Cannot assign to: {node.name}")
 
     def visit_postfix_lhs(self, node: "PostfixLHS", o: Access = None):
+        if o is None: return "", None
         code, current_type = self.visit(node.postfix_expr.primary, o)
         self.emit.print_out(code)
         
-        # Ops
         for op in node.postfix_expr.postfix_ops[:-1]:
             if isinstance(op, MemberAccess):
                 self.emit.print_out(self.emit.emit_get_field(op.member_name, current_type, o.frame))
-                # Update current_type for next step
                 if isinstance(current_type, ClassType) and current_type.class_name in self.class_fields:
                     current_type = self.class_fields[current_type.class_name].get(op.member_name, current_type)
             elif isinstance(op, ArrayAccess):
@@ -433,13 +541,11 @@ class CodeGenerator(ASTVisitor):
                 self.emit.print_out(self.emit.emit_aload(current_type.element_type, o.frame))
                 current_type = current_type.element_type
 
-        # Write Op
         last_op = node.postfix_expr.postfix_ops[-1]
         if isinstance(last_op, MemberAccess):
-            field_type = PrimitiveType("int") # Default fallback
+            field_type = PrimitiveType("int")
             if isinstance(current_type, ClassType) and current_type.class_name in self.class_fields:
                 field_type = self.class_fields[current_type.class_name].get(last_op.member_name, field_type)
-            
             field_lexeme = current_type.class_name + "/" + last_op.member_name
             self.emit.print_out(self.emit.jvm.INDENT + "swap" + self.emit.jvm.END)
             self.emit.print_out(self.emit.emit_put_field(field_lexeme, field_type, o.frame))
@@ -447,8 +553,14 @@ class CodeGenerator(ASTVisitor):
         elif isinstance(last_op, ArrayAccess):
             idx_code, _ = self.visit(last_op.index, o)
             self.emit.print_out(idx_code) 
+            
+            # [FIX START] Manual Frame update for dup2_x1
             self.emit.print_out(self.emit.jvm.INDENT + "dup2_x1" + self.emit.jvm.END)
+            o.frame.push(); o.frame.push() # Báo frame biết stack tăng 2
             self.emit.print_out(self.emit.jvm.INDENT + "pop2" + self.emit.jvm.END)
+            o.frame.pop(); o.frame.pop()   # Báo frame biết stack giảm 2
+            # [FIX END]
+            
             self.emit.print_out(self.emit.emit_astore(current_type.element_type, o.frame))
             
         return "", None
@@ -462,7 +574,7 @@ class CodeGenerator(ASTVisitor):
         left_code, left_type = self.visit(node.left, o)
         self.emit.print_out(left_code)
         
-        if op == '/' and is_int_type(left_type):
+        if op == '/' and self.is_int(left_type):
             self.emit.print_out(self.emit.emit_i2f(o.frame))
             left_type = PrimitiveType("float")
 
@@ -493,29 +605,57 @@ class CodeGenerator(ASTVisitor):
         right_code, right_type = self.visit(node.right, o)
         self.emit.print_out(right_code)
         
-        if op == '/' and is_int_type(right_type):
+        if op == '/' and self.is_int(right_type):
              self.emit.print_out(self.emit.emit_i2f(o.frame))
              right_type = PrimitiveType("float")
 
-        if is_float_type(left_type) and is_int_type(right_type):
+        if self.is_float(left_type) and self.is_int(right_type):
             self.emit.print_out(self.emit.emit_i2f(o.frame))
             right_type = PrimitiveType("float")
-        elif is_float_type(right_type) and is_int_type(left_type):
+        elif self.is_float(right_type) and self.is_int(left_type):
             self.emit.print_out(self.emit.jvm.INDENT + "swap" + self.emit.jvm.END)
             self.emit.print_out(self.emit.emit_i2f(o.frame))
             self.emit.print_out(self.emit.jvm.INDENT + "swap" + self.emit.jvm.END)
             left_type = PrimitiveType("float")
 
+        if self.is_string(left_type) and self.is_string(right_type):
+            if op == "==":
+                self.emit.print_out(self.emit.emit_invoke_virtual("java/lang/String/equals", FunctionType([ClassType("java/lang/Object")], PrimitiveType("boolean")), o.frame))
+                return "", PrimitiveType("boolean")
+            elif op == "!=":
+                self.emit.print_out(self.emit.emit_invoke_virtual("java/lang/String/equals", FunctionType([ClassType("java/lang/Object")], PrimitiveType("boolean")), o.frame))
+                self.emit.print_out(self.emit.emit_push_iconst(1, o.frame))
+                self.emit.print_out(self.emit.jvm.emitIXOR())
+                o.frame.pop(); o.frame.pop(); o.frame.push()
+                return "", PrimitiveType("boolean")
+            elif op == "^":
+                self.emit.print_out(self.emit.jvm.emitINVOKEVIRTUAL("java/lang/String/concat", "(Ljava/lang/String;)Ljava/lang/String;"))
+                o.frame.pop(); o.frame.pop(); o.frame.push()
+                return "", PrimitiveType("string")
+
         res_type = left_type
-        if is_float_type(left_type) or is_float_type(right_type) or op == '/':
+        if self.is_float(left_type) or self.is_float(right_type) or op == '/':
             res_type = PrimitiveType("float")
         
         if op in ['+', '-']: return self.emit.emit_add_op(op, res_type, o.frame), res_type
         elif op in ['*', '/']: return self.emit.emit_mul_op(op, res_type, o.frame), res_type
-        elif op == '\\': return self.emit.emit_div(o.frame), PrimitiveType("int")
-        elif op == '%': return self.emit.emit_mod(o.frame), PrimitiveType("int")
-        elif op == '^': return self.emit.jvm.emitINVOKEVIRTUAL("java/lang/String/concat", "(Ljava/lang/String;)Ljava/lang/String;"), PrimitiveType("string")
-        elif op in ['>', '<', '>=', '<=', '!=', '==']: return self.emit.emit_re_op(op, res_type, o.frame), PrimitiveType("boolean")
+        
+        # [FIX HERE] Thủ công push vào frame cho phép chia nguyên và chia dư
+        elif op == '\\': 
+             code = self.emit.emit_div(o.frame)
+             o.frame.push() 
+             return code, PrimitiveType("int")
+        elif op == '%': 
+             code = self.emit.emit_mod(o.frame)
+             o.frame.push() 
+             return code, PrimitiveType("int")
+        
+        # [FIX HERE] Thủ công push vào frame cho phép so sánh
+        elif op in ['>', '<', '>=', '<=', '!=', '==']: 
+            code = self.emit.emit_re_op(op, res_type, o.frame)
+            o.frame.push() # Giả định kết quả là boolean (1 phần tử trên stack)
+            return code, PrimitiveType("boolean")
+        
         return "", res_type
 
     def visit_unary_op(self, node: "UnaryOp", o: Access = None):
@@ -526,17 +666,20 @@ class CodeGenerator(ASTVisitor):
         return "", typ
 
     def visit_postfix_expression(self, node: "PostfixExpression", o: Access = None):
+        # 1. Visit primary (Identifier, Array, etc.)
         code, current_type = self.visit(node.primary, o)
         
         is_static_access = False
         class_name_for_static = ""
         
+        # Nếu primary là Identifier nhưng không tìm thấy trong biến -> Khả năng là Class Name (Static Access)
         if current_type is None and isinstance(node.primary, Identifier):
             is_static_access = True
             class_name_for_static = node.primary.name
         else:
             self.emit.print_out(code)
 
+        # 2. Process Ops
         for op in node.postfix_ops:
             if isinstance(op, MethodCall):
                 arg_types = []
@@ -550,7 +693,7 @@ class CodeGenerator(ASTVisitor):
                     if found_sym:
                         ret_type = found_sym.type.return_type
                     else:
-                        ret_type = self.user_static_methods.get(op.method_name, PrimitiveType("void"))
+                        ret_type = self.class_methods.get(class_name_for_static, {}).get(op.method_name, PrimitiveType("void"))
                     
                     self.emit.print_out(self.emit.emit_invoke_static(
                         class_name_for_static + "/" + op.method_name, 
@@ -561,12 +704,17 @@ class CodeGenerator(ASTVisitor):
                     current_type = ret_type
                     is_static_access = False 
                 else:
+                    # Instance Method Call
                     ret_type = PrimitiveType("void")
+                    c_name = "" 
                     if isinstance(current_type, ClassType):
+                        c_name = current_type.class_name
                         ret_type = self.class_methods.get(current_type.class_name, {}).get(op.method_name, ret_type)
                     
+                    full_method_name = c_name + "/" + op.method_name
+                    
                     self.emit.print_out(self.emit.emit_invoke_virtual(
-                        op.method_name, 
+                        full_method_name,
                         FunctionType(arg_types, ret_type), 
                         o.frame
                     ))
@@ -575,6 +723,7 @@ class CodeGenerator(ASTVisitor):
             elif isinstance(op, MemberAccess):
                 if is_static_access:
                      field_type = PrimitiveType("int")
+                     # Tra cứu field static
                      if class_name_for_static in self.class_fields:
                          field_type = self.class_fields[class_name_for_static].get(op.member_name, field_type)
                      
@@ -586,7 +735,6 @@ class CodeGenerator(ASTVisitor):
                     if isinstance(current_type, ClassType):
                         field_type = self.class_fields.get(current_type.class_name, {}).get(op.member_name, field_type)
                     
-                    # FIX: Construct Class/Field name for getfield
                     class_name = current_type.class_name if isinstance(current_type, ClassType) else ""
                     full_field_name = class_name + "/" + op.member_name
                         
@@ -667,12 +815,16 @@ class CodeGenerator(ASTVisitor):
         
         safe_first_type = self.sanitize_type(first_type)
         
-        if is_int_type(safe_first_type):
+        if self.is_int(safe_first_type):
             self.emit.print_out(self.emit.jvm.emitNEWARRAY("int"))
-        elif is_float_type(safe_first_type):
+        elif self.is_float(safe_first_type):
              self.emit.print_out(self.emit.jvm.emitNEWARRAY("float"))
-        elif is_string_type(safe_first_type):
+        elif self.is_bool(safe_first_type):
+             self.emit.print_out(self.emit.jvm.emitNEWARRAY("boolean"))
+        elif self.is_string(safe_first_type):
              self.emit.print_out(self.emit.jvm.emitANEWARRAY("java/lang/String"))
+        elif isinstance(safe_first_type, ClassType):
+             self.emit.print_out(self.emit.jvm.emitANEWARRAY(safe_first_type.class_name))
         else:
              self.emit.print_out(self.emit.jvm.emitANEWARRAY("java/lang/Object"))
         
@@ -685,7 +837,7 @@ class CodeGenerator(ASTVisitor):
             self.emit.print_out(elem_code)
             
             safe_elem_type = self.sanitize_type(elem_type)
-            if is_float_type(safe_first_type) and is_int_type(safe_elem_type):
+            if self.is_float(safe_first_type) and self.is_int(safe_elem_type):
                  self.emit.print_out(self.emit.emit_i2f(o.frame))
             self.emit.print_out(self.emit.emit_astore(safe_first_type, o.frame))
             

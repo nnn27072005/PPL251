@@ -116,7 +116,6 @@ class Checker:
             if isinstance(self.ast, str):  # If AST generation failed
                 return self.ast
             
-            # ✅ Gán kết quả trả về từ check_program
             self.checker.check_program(self.ast)
             return "Static checking passed"
         except Exception as e:
@@ -207,5 +206,16 @@ class CodeGenerator:
             except FileNotFoundError:
                 return "Java not found"
                 
+        except Exception as e:
+            return f"Code generation error: {str(e)}"
+    def generate_for_source(self, source):
+        """Generate code from source code and return output"""
+        try:
+            ast_gen = ASTGenerator(source)
+            ast = ast_gen.generate()
+            if isinstance(ast, str):  # If AST generation failed
+                return ast
+            
+            return self.generate_and_run(ast)
         except Exception as e:
             return f"Code generation error: {str(e)}"
